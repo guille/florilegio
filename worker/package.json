@@ -1,0 +1,16 @@
+{
+  "name": "worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "hono": "^4.12.15"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.14.9",
+    "oxfmt": "^0.51.0",
+    "oxlint": "^1.66.0",
+    "vitest": "^4.1.5",
+    "wrangler": "^4.85.0"
+  },
+  "packageManager": "pnpm"
+}

@@ -1,0 +1,11 @@
+{
+	"name": "florilegio-client",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler pages deploy"
+	},
+	"devDependencies": {
+		"wrangler": "^4.85.0"
+	}
+}

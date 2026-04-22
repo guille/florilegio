@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "florilegio",
+  "main": "src/index.ts",
+  "send_metrics": false,
+  "compatibility_date": "2026-04-22",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bookmarks",
+      "database_id": "92c29769-9263-4572-99bd-8352c7d871c3",
+    },
+  ],
+}

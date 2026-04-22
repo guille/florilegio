@@ -1,0 +1,7 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "florilegio",
+	"compatibility_date": "2026-05-02",
+	"send_metrics": false,
+	"pages_build_output_dir": "build/web"
+}

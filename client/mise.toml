@@ -1,0 +1,43 @@
+[env._]
+path = [
+  "{{config_root}}/node_modules/.bin",
+]
+
+[deps.flutter]
+auto = true
+
+[tasks.test]
+run = "flutter test"
+
+[tasks.fmt]
+run = "dart format ."
+
+[tasks.check]
+run = "flutter analyze"
+
+[tasks.reload]
+run = "[ -f .flutter.pid ] && kill -USR1 \"$( < .flutter.pid )\" || echo \"not running\""
+
+[tasks.restart]
+run = "[ -f .flutter.pid ] && kill -USR2 \"$( < .flutter.pid )\" || echo \"not running\""
+
+[tasks."run:android"]
+run         = "flutter run --pid-file=.flutter.pid"
+description = "Runs the frontend (Android)"
+
+[tasks."run:web"]
+run         = "flutter run -d web-server --no-web-resources-cdn"
+description = "Runs the frontend (web)"
+
+[tasks."build:android"]
+run = "flutter build apk"
+
+[tasks."build:web"]
+sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart"]
+outputs = { auto = true }
+run     = "flutter build web --release --no-web-resources-cdn"
+
+[tasks."deploy:web"]
+depends     = "build:web"
+description = "Deploys the frontend to Cloudflare Pages"
+run         = "wrangler pages deploy"

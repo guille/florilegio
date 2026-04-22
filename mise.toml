@@ -1,0 +1,45 @@
+experimental_monorepo_root = true
+
+[monorepo]
+config_roots = ["*"]
+
+[tools]
+java = "21"
+node = "latest"
+pnpm = { version = "latest", depends = "node", postinstall = "mise run //:setup:node" }
+
+[tools.flutter]
+version     = "3.41"
+postinstall = "mise run //:setup:flutter"
+
+[tools."http:android-cli"]
+url         = "https://dl.google.com/android/cli/latest/{{os()}}_x86_64/android"
+depends     = "flutter"
+version     = "0.7"  # doesn't do anything ofc
+postinstall = "mise run //:setup:android"
+
+[shell_alias]
+android = "android --no-metrics"
+
+[tasks."setup:android"]
+hide = true
+run  = [
+  "android",
+  "android sdk install build-tools/37.0.0",
+  "android sdk install platform-tools",
+  "android sdk install cmdline-tools",
+  "flutter doctor --android-licenses"
+]
+
+[tasks."setup:flutter"]
+hide = true
+run  = [
+  "mise x -- dart --disable-analytics",
+  "mise x -- flutter --disable-analytics",
+  'mise set --env=local FLUTTER_ROOT="$(mise where flutter)"',
+]
+
+[tasks."setup:node"]
+hide = true
+dir  = "worker"
+run  = ["pnpm install", "mise run //worker:cf-typegen"]

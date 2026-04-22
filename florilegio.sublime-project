@@ -1,0 +1,47 @@
+{
+	"folders": [
+		{
+			"path": ".",
+			"folder_exclude_patterns": [
+				"client",
+				"ff-extension",
+				"worker"
+			],
+		},
+		{
+			"path": "client",
+			"folder_exclude_patterns": [
+				"//.dart_tool",
+				"//build",
+				".gradle"
+			],
+			"file_exclude_patterns": [
+				"*.jar",
+				"*.bat"
+			]
+		},
+		{
+			"path": "ff-extension"
+		},
+		{
+			"path": "worker",
+			"folder_exclude_patterns": [
+				".wrangler"
+			]
+		}
+	],
+	"config": {
+		"run_on_save": {
+			"source.dart": [
+				{
+					"cmd": [
+						"mise",
+						"run",
+						"//client:reload"
+					],
+					"build_panel": false,
+				},
+			],
+		},
+	},
+}

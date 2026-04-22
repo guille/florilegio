@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <!-- Initial state: shows while auto-saving -->
+  <div id="state-saving" class="state">
+    <p class="status">Saving...</p>
+  </div>
+
+  <!-- Saved: editable fields + confirm -->
+  <div id="state-saved" class="state hidden">
+    <p class="status saved">Saved</p>
+    <label for="title">Title</label>
+    <input type="text" id="title" placeholder="Title">
+    <label for="tags">Tags <span class="hint">(comma-separated)</span></label>
+    <input type="text" id="tags" placeholder="dev, read-later">
+    <button id="btn-update">Update</button>
+  </div>
+
+  <!-- Already exists -->
+  <div id="state-duplicate" class="state hidden">
+    <p class="status duplicate">Already saved</p>
+  </div>
+
+  <!-- Updated confirmation -->
+  <div id="state-updated" class="state hidden">
+    <p class="status saved">Updated</p>
+  </div>
+
+  <!-- Error -->
+  <div id="state-error" class="state hidden">
+    <p class="status error" id="error-msg">Error</p>
+  </div>
+
+  <!-- Not configured -->
+  <div id="state-no-config" class="state hidden">
+    <p class="status error">Not configured</p>
+    <p class="hint">Set your API URL and token in the extension options.</p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,35 @@
+[env._]
+path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.seed]
+sources = ["seeds/seed.sql"]
+depends = "apply-schema:local"
+run = "wrangler d1 execute bookmarks --local --file seeds/seed.sql"
+description = "Seed local D1 with sample bookmarks"
+
+[tasks."apply-schema:local"]
+sources = ["migrations/*.sql"]
+run = "wrangler d1 migrations apply --local bookmarks"
+
+[tasks."apply-schema:remote"]
+run = "wrangler d1 migrations apply --remote bookmarks"
+
+[tasks.dev]
+alias = ["s", "serve"]
+depends = ["apply-schema:local"]
+run = "wrangler dev"
+
+[tasks.deploy]
+run = "wrangler deploy --minify"
+
+[tasks.cf-typegen]
+run = "wrangler types --env-interface CloudflareBindings"
+
+[tasks.test]
+run = "vitest run"
+
+[tasks.lint]
+run = "oxlint"
+
+[tasks.fmt]
+run = "oxfmt"
