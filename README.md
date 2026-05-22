@@ -2,7 +2,9 @@
 
 A simple, single-user read-it-later tool in the vein of Pocket or Raindrop.io
 
-![logo](ff-extension/src/icons/icon-96.png)
+<p align="center">
+  <img src="showcase.webp" width="300" alt="App screenshot" />
+</p>
 
 The codebase is structured as a monorepo, containing:
 - client: Flutter app targetting web and Android that acts as a front-end
