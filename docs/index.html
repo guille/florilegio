@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>florilegio — a personal read-it-later app</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <meta name="description"
+    content="florilegio is a personal read-it-later app, in the spirit of Pocket or Raindrop. Flutter for Android and the web, Firefox extension, Hono backend on Workers + D1.">
+  <meta property="og:title" content="florilegio — a personal read-it-later app">
+  <meta property="og:description"
+    content="A personal read-it-later app, in the spirit of Pocket or Raindrop. Flutter for Android and web, Firefox extension, Hono backend on Workers + D1.">
+  <meta property="og:image" content="https://florilegio.guillerg.dev/showcase.jpg">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://florilegio.guillerg.dev">
+  <link rel="preload" as="image" href="icon.webp" type="image/webp" fetchpriority="high">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-github" viewBox="0 0 496 512">
+      <path fill="currentColor"
+        d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.8-14.9-112.8-116.5 0-26.5 7.1-39.5 22-56.6-2.6-6.5-10.1-33.4 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 12.7 34.5 5.2 61.4 2.6 67.9 15 17.2 24.1 30.2 24.1 56.6 0 101.8-60.2 110.3-112.8 116.5 8.9 7.8 16.7 22.9 16.7 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8z" />
+    </symbol>
+    <symbol id="i-license" viewBox="0 0 16 16">
+      <path fill="currentColor"
+        d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L12.178 4.5h-.162c-.305 0-.604-.079-.868-.231l-1.29-.736a.245.245 0 0 0-.124-.033H8.75V13h2.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2.5V3.5h-.984a.245.245 0 0 0-.124.033l-1.289.737c-.265.15-.564.23-.869.23h-.162l2.112 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.016.015-.045.04c-.21.176-.441.327-.686.45C4.556 10.78 3.88 11 3 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L2.178 4.5H1.75a.75.75 0 0 1 0-1.5h2.234a.249.249 0 0 0 .125-.033l1.288-.737c.265-.15.564-.23.869-.23h.984V.75a.75.75 0 0 1 1.5 0Zm2.945 8.477c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L13 6.327Zm-10 0c.285.135.718.273 1.305.273s1.02-.138 1.305-.273L3 6.327Z" />
+    </symbol>
+  </svg>
+
+  <article class="folio">
+    <header class="incipit">
+      <img src="icon.webp" alt="" class="emblem" width="64" height="64" fetchpriority="high" decoding="sync">
+      <h1>florilegio</h1>
+      <p class="subtitle">A personal read-it-later app</p>
+    </header>
+
+    <div class="fleuron" aria-hidden="true">❦</div>
+
+    <section class="prose">
+      <aside class="margin-note">
+        <em>florilegium</em>, Latin — a gathering of flowers; a book of selected passages.
+      </aside>
+      <p>
+        <span class="dropcap">F</span>lorilegio is a small, personal reading list. You save things to read later and it
+        keeps them in one place you can open from your phone or your
+        laptop. It takes its name from the medieval anthologies of selected passages.
+      </p>
+
+      <p>
+        Pocket shut down in the summer of 2025, and the alternatives kept adding things I had not asked for: summaries
+        written by machines, recommendations, social feeds, subscriptions. I wrote this instead.
+      </p>
+
+      <aside class="margin-note">
+        Hono on Workers, SQLite on D1, Flutter on Pages.
+      </aside>
+      <p>
+        What it does is small and finite. You save a URL (from the Firefox extension, or by sharing or pasting it into
+        the app)
+        and the server fetches the page's title and metadata. You read what you saved on Android or in a browser, from
+        the same list, with the same interface. If you came from Raindrop.io, a script imports your export. The database
+        underneath is plain SQLite; nothing is locked in.
+      </p>
+
+      <p>
+        What it does <em>not</em> do is the rest of the bookmarking-app feature list. No summaries, no auto-tagging, no
+        recommendations, no accounts, no sharing, no social. It is not a service you sign up for: you run it yourself,
+        on Cloudflare's free tier, with your own data and your own URL.
+      </p>
+    </section>
+
+    <figure class="plate">
+      <img src="showcase.webp" alt="The florilegio Android client showing a list of saved articles" width="540"
+        height="1065" loading="lazy" decoding="async">
+      <figcaption>Plate I &mdash; the Android client</figcaption>
+    </figure>
+
+    <div class="fleuron" aria-hidden="true">❦</div>
+
+    <section class="colophon" id="deploy">
+      <h2>Deploy your own</h2>
+      <p>The whole stack fits in Cloudflare's free tier. In brief:</p>
+      <ol class="steps">
+        <li>Clone the repository and run <code>mise install</code>.</li>
+        <li>Deploy the Worker to your Cloudflare account, with a generated token as a secret.</li>
+        <li>Build the Flutter client and point it at your Worker's URL.</li>
+        <li>Optionally, install the Firefox extension for one-click saves.</li>
+      </ol>
+      <p class="readmore">Full instructions are in the <a href="https://github.com/guille/florilegio">README</a>.</p>
+    </section>
+
+    <footer>
+      <p>
+        <a href="https://github.com/guille/florilegio">
+          <svg class="icon" aria-hidden="true">
+            <use href="#i-github" />
+          </svg>
+          Source on GitHub
+        </a>
+        <span class="middot" aria-hidden="true">·</span>
+        <a href="https://github.com/guille/florilegio/blob/master/LICENSE.md">
+          <svg class="icon" aria-hidden="true">
+            <use href="#i-license" />
+          </svg>
+          MIT License
+        </a>
+      </p>
+    </footer>
+  </article>
+
+  <link rel="dns-prefetch" href="https://gc.zgo.at">
+  <script>
+    window.goatcounter = {
+      path: function(p) { return "/florilegio" }
+    }
+  </script>
+  <script data-goatcounter="https://guille.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+</body>
+
+</html>

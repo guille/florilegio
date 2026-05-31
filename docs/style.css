@@ -1,0 +1,404 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --paper: #f4ecd6;
+  --paper-shade: #ebe1c1;
+  --ink: #1f1a14;
+  --ink-muted: #5a4e3d;
+  --ink-faint: #8a7c66;
+  --rubric: #8c2520;
+  --rubric-soft: rgba(140, 37, 32, 0.08);
+  --rule: #c4b48f;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", Georgia, serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+html {
+  font-family: var(--font-serif);
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.7;
+  font-size: 18px;
+  overflow-x: clip;
+  scroll-behavior: smooth;
+  font-feature-settings: "kern", "liga";
+  font-variant-numeric: oldstyle-nums;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: radial-gradient(ellipse at top, var(--paper) 0%, var(--paper-shade) 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+@media (min-width: 1100px) {
+  html { font-size: 19px; }
+}
+
+:focus-visible {
+  outline: 2px solid var(--rubric);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(140, 37, 32, 0.18);
+  color: var(--ink);
+}
+
+/* Folio container */
+.folio {
+  max-width: 34em;
+  margin: 0 auto;
+  padding: 4.5rem 2rem 2.5rem;
+}
+
+/* Incipit */
+.incipit {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.emblem {
+  width: 64px;
+  height: 64px;
+  border-radius: 22%;
+  margin-bottom: 1.25rem;
+  opacity: 0.92;
+}
+
+.incipit h1 {
+  font-size: 3.5rem;
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 0.6rem;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--ink-muted);
+  font-variant: small-caps;
+  letter-spacing: 0.12em;
+}
+
+/* Fleuron divider */
+.fleuron {
+  text-align: center;
+  color: var(--rubric);
+  font-size: 1.5rem;
+  margin: 2.5rem 0;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Prose */
+.prose p {
+  margin-bottom: 1.1rem;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-wrap: pretty;
+}
+
+.prose p + p {
+  text-indent: 1.5em;
+  margin-top: -0.3rem;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.dropcap {
+  float: left;
+  font-family: var(--font-serif);
+  font-size: 5.1em;
+  line-height: 0.88;
+  font-weight: 400;
+  color: var(--rubric);
+  padding: 0.05em 0.12em 0 0;
+  margin-top: 0.02em;
+}
+
+/* Progressive enhancement: use the proper CSS spec where supported (Safari, Edge) */
+@supports (initial-letter: 3) or (-webkit-initial-letter: 3) {
+  .dropcap {
+    float: none;
+    font-size: 1em;
+    line-height: inherit;
+    padding: 0;
+    margin: 0;
+    initial-letter: 3;
+    -webkit-initial-letter: 3;
+    margin-right: 0.1em;
+    color: var(--rubric);
+  }
+}
+
+/* Marginalia: a sidenote even when stacked (right-aligned, narrow, fleuron-led).
+   On wide screens, lifts into the right margin via negative margins. */
+.margin-note {
+  display: block;
+  max-width: 22em;
+  margin: 0.25rem 0 1.1rem auto;
+  font-size: 0.82em;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.margin-note::before {
+  content: "※";
+  display: inline-block;
+  margin-right: 0.4em;
+  color: var(--rubric);
+  font-style: normal;
+  font-size: 0.9em;
+  vertical-align: 0.05em;
+}
+
+.margin-note em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+@media (min-width: 1100px) {
+  .margin-note {
+    float: right;
+    clear: right;
+    width: 11em;
+    max-width: none;
+    margin: 0.5em -13em 1rem 1.5em;
+    text-align: left;
+  }
+}
+
+/* Plate */
+.plate {
+  text-align: center;
+  margin: 3rem auto;
+}
+
+.plate img {
+  width: auto;
+  max-width: min(100%, 260px);
+  height: auto;
+  border: 1px solid var(--rule);
+  padding: 6px;
+  background: var(--paper);
+}
+
+.plate figcaption {
+  margin-top: 1rem;
+  font-style: italic;
+  font-variant: small-caps;
+  letter-spacing: 0.1em;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+/* Colophon */
+.colophon h2 {
+  font-weight: 400;
+  font-style: italic;
+  font-size: 1.6rem;
+  color: var(--ink);
+  text-align: center;
+  margin-bottom: 1.5rem;
+  text-wrap: balance;
+}
+
+.colophon p {
+  margin-bottom: 1rem;
+}
+
+.steps {
+  margin: 1.25rem 0 1.25rem 1.5em;
+  padding: 0;
+}
+
+.steps li {
+  margin-bottom: 0.6rem;
+  padding-left: 0.25rem;
+}
+
+.steps li::marker {
+  color: var(--rubric);
+  font-style: italic;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--rubric-soft);
+  color: var(--ink);
+  padding: 0.08em 0.4em;
+  border-radius: 3px;
+}
+
+.colophon a,
+.prose a,
+.readmore a {
+  color: var(--rubric);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: text-decoration-thickness 0.15s ease;
+}
+
+.colophon a:hover,
+.prose a:hover,
+.readmore a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.readmore {
+  font-size: 0.92rem;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* Footer */
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--rule);
+  text-align: center;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--ink-muted);
+}
+
+footer p {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+footer a {
+  color: var(--ink-muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+footer a:hover {
+  color: var(--rubric);
+}
+
+footer .icon {
+  width: 1em;
+  height: 1em;
+}
+
+footer .middot {
+  color: var(--ink-faint);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .folio {
+    padding: 3rem 1.5rem 2rem;
+  }
+
+  .incipit h1 {
+    font-size: 2.75rem;
+  }
+
+  .prose p {
+    text-align: left;
+    hyphens: none;
+  }
+
+  .prose p + p {
+    text-indent: 1.25em;
+  }
+
+  .dropcap {
+    font-size: 3.8em;
+  }
+
+  .fleuron {
+    margin: 2rem 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Print: drop ornament, expand column, switch to plain white for ink savings */
+@media print {
+  html, body {
+    background: #ffffff;
+    color: #000000;
+    font-size: 11pt;
+  }
+
+  .folio {
+    max-width: none;
+    padding: 0;
+  }
+
+  .emblem,
+  .fleuron,
+  footer {
+    display: none;
+  }
+
+  .incipit h1 {
+    font-size: 2rem;
+  }
+
+  .prose p {
+    text-align: left;
+    hyphens: none;
+  }
+
+  .dropcap {
+    color: #000000;
+  }
+
+  .plate img {
+    border: 1px solid #999;
+    padding: 0;
+    max-width: 320px;
+  }
+
+  .steps li::marker {
+    color: #000000;
+  }
+
+  a {
+    color: #000000;
+    text-decoration: underline;
+  }
+
+  /* Show URLs for external links */
+  .prose a[href^="http"]::after,
+  .colophon a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #555;
+  }
+}
