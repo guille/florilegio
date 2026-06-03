@@ -1,5 +1,8 @@
 experimental_monorepo_root = true
 
+[env]
+_.path = "~/Android/Sdk/platform-tools"
+
 [monorepo]
 config_roots = ["*"]
 
