@@ -10,6 +10,10 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    lint {
+        disable += "Instantiatable"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -29,11 +33,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("personal") {
+            storeFile = rootProject.file("signing/personal.keystore").also {
+                check(it.exists()) {
+                    "signing/personal.keystore not found"
+                }
+            }
+            storePassword = System.getenv("KEYSTORE_STORE_PASSWORD")
+                ?: error("KEYSTORE_STORE_PASSWORD not set")
+            keyAlias = System.getenv("KEYSTORE_KEY_ALIAS")
+                ?: error("KEYSTORE_KEY_ALIAS not set")
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
+                ?: error("KEYSTORE_KEY_PASSWORD not set")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("personal")
         }
     }
 }

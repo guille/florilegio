@@ -2,6 +2,10 @@
 path = [
   "{{config_root}}/node_modules/.bin",
 ]
+file = { path = "android/signing/creds.env.json", redact = true }
+
+[settings.sops]
+age_key_file = "~/.config/age/key.txt"
 
 [deps.flutter]
 auto = true
@@ -30,7 +34,8 @@ run         = "flutter run -d web-server --no-web-resources-cdn"
 description = "Runs the frontend (web)"
 
 [tasks."build:android"]
-run = "flutter build apk"
+depends = "decrypt-signing"
+run     = "flutter build apk"
 
 [tasks."build:web"]
 sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart"]
@@ -41,3 +46,9 @@ run     = "flutter build web --release --no-web-resources-cdn"
 depends     = "build:web"
 description = "Deploys the frontend to Cloudflare Pages"
 run         = "wrangler pages deploy"
+
+[tasks.decrypt-signing]
+description = "Decrypt signing keystore"
+sources     = ["android/signing/personal.keystore.age"]
+outputs     = ["android/signing/personal.keystore"]
+run         = "age -d -i ~/.config/age/key.txt -o android/signing/personal.keystore android/signing/personal.keystore.age"

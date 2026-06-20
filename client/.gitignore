@@ -39,3 +39,6 @@ app.*.map.json
 
 .wrangler/
 node_modules/
+
+# signing key
+android/signing/*.keystore
