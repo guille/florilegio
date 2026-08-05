@@ -36,13 +36,7 @@ class SyncService {
   final BookmarkApiClient _apiClient;
   final TitleFetcher? _titleFetcher;
 
-  SyncService({
-    required BookmarkRepository repository,
-    required BookmarkApiClient apiClient,
-    TitleFetcher? titleFetcher,
-  }) : _repository = repository,
-       _apiClient = apiClient,
-       _titleFetcher = titleFetcher;
+  SyncService({required this._repository, required this._apiClient, this._titleFetcher});
 
   /// Full sync: flush pending queue, then fetch all remote bookmarks and replace local data.
   /// When [force] is true (user-initiated refresh), skips If-Modified-Since.

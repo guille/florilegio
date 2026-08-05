@@ -35,7 +35,7 @@ app.use("*", cors({ origin: "*", allowHeaders: ["Authorization", "Content-Type"]
 // (Skip OPTIONS preflight — CORS middleware already handles it)
 app.use("*", async (c, next) => {
   if (c.req.method === "OPTIONS") return next();
-  return bearerAuth({ token: c.env.API_TOKEN })(c, next);
+  return bearerAuth<{ Bindings: Env }>({ token: c.env.API_TOKEN })(c, next);
 });
 
 // ── List  GET /bookmarks ───────────────────────────────────────────────────────

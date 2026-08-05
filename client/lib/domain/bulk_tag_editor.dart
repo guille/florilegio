@@ -43,13 +43,10 @@ class BulkTagEditor {
   final Map<String, Set<String>> _originalTags;
 
   BulkTagEditor._({
-    required Map<String, TagState> activeTags,
-    required Set<String> suggestions,
-    required Map<String, Set<String>> originalTags,
-  }) : _activeTags = activeTags,
-       _suggestions = suggestions,
-       _actions = {},
-       _originalTags = originalTags;
+    required this._activeTags,
+    required this._suggestions,
+    required this._originalTags,
+  }) : _actions = {};
 
   /// Creates a [BulkTagEditor] from the selected items' tags and all library tags.
   ///

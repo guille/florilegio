@@ -14,10 +14,10 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.41.9"
+          flutter-version: "3.44.8"
           channel: stable
           cache: true
       - run: flutter pub get
@@ -31,14 +31,17 @@ jobs:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: latest
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: pnpm
           cache-dependency-path: worker/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm tsc --noEmit
+      - run: pnpm oxfmt --check
+      - run: pnpm oxlint
       - run: pnpm vitest run

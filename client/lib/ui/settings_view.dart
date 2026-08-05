@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:typed_data' show Uint8List;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:florilegio/data/api_client.dart';
@@ -105,21 +105,14 @@ class _SettingsViewState extends State<SettingsView> {
       return;
     }
 
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-      withData: true,
-    );
+    final result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
     if (result == null || result.files.isEmpty) return;
 
-    final pickedFile = result.files.first;
-    var bytes = pickedFile.bytes;
-    if (bytes == null && !kIsWeb) {
-      // On native platforms, bytes may be null; read from the file path
-      final path = pickedFile.path;
-      if (path != null) {
-        bytes = await File(path).readAsBytes();
-      }
+    Uint8List? bytes;
+    try {
+      bytes = await result.files.first.readAsBytes();
+    } on StateError {
+      // Platform can't supply the data (e.g. a non-fetchable web blob URL).
     }
     if (bytes == null || bytes.isEmpty) {
       _showSnack('Could not read file');

@@ -19,10 +19,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         applicationId = "com.mongui.florilegio"
         // You can update the following values to match your application needs.
@@ -53,6 +49,12 @@ android {
         release {
             signingConfig = signingConfigs.getByName("personal")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
