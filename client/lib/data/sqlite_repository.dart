@@ -233,11 +233,16 @@ class SqliteBookmarkRepository implements BookmarkRepository {
 
   @override
   Future<void> incrementDeleteCount([int n = 1]) async {
-    final current = await getDeleteCount();
-    await _db.insert('sync_metadata', {
-      'key': 'delete_count',
-      'value': '${current + n}',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    // Single-statement increment so concurrent deletes can't lose updates.
+    // ON CONFLICT DO UPDATE would be cleaner but needs SQLite 3.24 (not
+    // guaranteed until Android 11); this form works on any version.
+    // CAST keeps the TEXT column holding a string, as getDeleteCount expects.
+    await _db.rawInsert(
+      "INSERT OR REPLACE INTO sync_metadata(key, value) VALUES('delete_count', "
+      "CAST(COALESCE((SELECT value FROM sync_metadata WHERE key = 'delete_count'), 0) + ? "
+      'AS TEXT))',
+      [n],
+    );
   }
 
   @override

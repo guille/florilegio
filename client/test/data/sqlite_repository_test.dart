@@ -16,6 +16,9 @@ void main() {
     final db = await databaseFactoryFfi.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
+        // A fresh private in-memory DB per test; the default singleInstance
+        // returns one shared cached instance for the same path.
+        singleInstance: false,
         version: 1,
         onCreate: (db, version) async {
           await db.execute('''
@@ -26,6 +29,12 @@ void main() {
               tags TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE sync_metadata (
+              key TEXT PRIMARY KEY,
+              value TEXT
             )
           ''');
         },
@@ -115,6 +124,24 @@ void main() {
       await repo.clear();
       final all = await repo.getAll();
       expect(all, isEmpty);
+    });
+
+    test('delete count starts at zero and increments', () async {
+      expect(await repo.getDeleteCount(), 0);
+      await repo.incrementDeleteCount();
+      await repo.incrementDeleteCount(2);
+      expect(await repo.getDeleteCount(), 3);
+    });
+
+    test('concurrent increments do not lose updates', () async {
+      await Future.wait(List.generate(10, (_) => repo.incrementDeleteCount()));
+      expect(await repo.getDeleteCount(), 10);
+    });
+
+    test('resetDeleteCount zeroes the counter', () async {
+      await repo.incrementDeleteCount(5);
+      await repo.resetDeleteCount();
+      expect(await repo.getDeleteCount(), 0);
     });
   });
 }
