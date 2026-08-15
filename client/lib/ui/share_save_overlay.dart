@@ -32,31 +32,21 @@ class _ShareSaveOverlayState extends State<ShareSaveOverlay> {
   }
 
   Future<void> _save() async {
-    try {
-      final result = await widget.syncService.saveBookmark(widget.url);
-      if (!mounted) return;
+    final result = await widget.syncService.saveBookmark(widget.url);
+    if (!mounted) return;
 
-      if (result.savedRemotely || result.queuedLocally || result.alreadyExists) {
-        setState(() {
-          _saving = false;
-          _success = true;
-          _alreadyExists = result.alreadyExists;
-        });
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-        _dismiss();
-      } else {
-        setState(() {
-          _saving = false;
-          _error = 'Failed to save bookmark';
-        });
-        await Future<void>.delayed(const Duration(seconds: 2));
-        _dismiss();
-      }
-    } catch (e) {
-      if (!mounted) return;
+    if (result.savedRemotely || result.queuedLocally || result.alreadyExists) {
       setState(() {
         _saving = false;
-        _error = 'Error: $e';
+        _success = true;
+        _alreadyExists = result.alreadyExists;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      _dismiss();
+    } else {
+      setState(() {
+        _saving = false;
+        _error = 'Failed to save: ${result.error}';
       });
       await Future<void>.delayed(const Duration(seconds: 2));
       _dismiss();

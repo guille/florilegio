@@ -202,6 +202,32 @@ void main() {
 
         expect(editor.addNewTag('news'), isFalse);
       });
+
+      test('undoing a brand-new tag does not fabricate a suggestion', () {
+        final editor = BulkTagEditor.fromSelection(
+          selectedItemTags: {'a': <String>{}},
+          allLibraryTags: {'news'},
+        );
+
+        editor.addNewTag('typo');
+        editor.toggleActive('typo');
+
+        expect(editor.activeTags.containsKey('typo'), isFalse);
+        expect(editor.suggestions, {'news'});
+      });
+
+      test('undoing an added library tag returns it to suggestions', () {
+        final editor = BulkTagEditor.fromSelection(
+          selectedItemTags: {'a': <String>{}},
+          allLibraryTags: {'news'},
+        );
+
+        editor.addFromSuggestion('news');
+        editor.toggleActive('news');
+
+        expect(editor.activeTags.containsKey('news'), isFalse);
+        expect(editor.suggestions, {'news'});
+      });
     });
 
     group('computeResults', () {

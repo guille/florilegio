@@ -42,10 +42,15 @@ class BulkTagEditor {
   /// Original tag sets per item, keyed by item id.
   final Map<String, Set<String>> _originalTags;
 
+  /// All tags that exist in the library; removed tags only return to
+  /// suggestions if they're in here (brand-new typed tags just vanish).
+  final Set<String> _libraryTags;
+
   BulkTagEditor._({
     required this._activeTags,
     required this._suggestions,
     required this._originalTags,
+    required this._libraryTags,
   }) : _actions = {};
 
   /// Creates a [BulkTagEditor] from the selected items' tags and all library tags.
@@ -79,6 +84,7 @@ class BulkTagEditor {
       activeTags: activeTags,
       suggestions: suggestions,
       originalTags: selectedItemTags,
+      libraryTags: allLibraryTags.union(tagCounts.keys.toSet()),
     );
   }
 
@@ -106,16 +112,12 @@ class BulkTagEditor {
     final existingAction = _actions[tag];
 
     if (existingAction == TagAction.add) {
-      // User previously added it; now remove.
+      // User previously added it; now remove. Keep it visible as a
+      // suggestion for re-adding — but only if it exists in the library,
+      // so undoing a brand-new typed tag doesn't fabricate a suggestion.
       _actions[tag] = TagAction.remove;
       _activeTags.remove(tag);
-      // If it was originally in some/all, move back to suggestions? No —
-      // it goes back to suggestions only if it was a suggestion originally.
-      // If it was originally active (some/all), removing means it disappears
-      // from active but we keep the remove action.
-      // Actually, let's keep removed tags visible as suggestions so user can
-      // re-add. But only if it existed in the library.
-      _suggestions.add(tag);
+      if (_libraryTags.contains(tag)) _suggestions.add(tag);
     } else if (currentState == TagState.all) {
       // Originally all had it → remove from all.
       _actions[tag] = TagAction.remove;

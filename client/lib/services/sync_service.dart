@@ -119,6 +119,8 @@ class SyncService {
   /// A 409 means the bookmark is already on the server — reported as such,
   /// not queued. If the bookmark has no title, attempts to fetch one from
   /// the page.
+  ///
+  /// Never throws: every failure mode is reported through [SaveResult].
   Future<SaveResult> saveBookmark(String url) async {
     try {
       final title = await _fetchTitleQuietly(url);

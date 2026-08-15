@@ -162,30 +162,25 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
+  // Used both to parse and to format; index + 1 == month number.
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
   /// Parse an HTTP date (e.g. "Thu, 01 Jan 2024 00:00:00 GMT") into a
-  /// human-readable local time string.
+  /// human-readable local time string. Falls back to the raw value.
   String _formatHttpDate(String httpDate) {
     try {
       // HTTP dates follow RFC 1123: "Thu, 01 Jan 2024 00:00:00 GMT"
-      // Dart's DateTime.parse doesn't handle this format, so parse manually.
-      const monthMap = {
-        'Jan': 1,
-        'Feb': 2,
-        'Mar': 3,
-        'Apr': 4,
-        'May': 5,
-        'Jun': 6,
-        'Jul': 7,
-        'Aug': 8,
-        'Sep': 9,
-        'Oct': 10,
-        'Nov': 11,
-        'Dec': 12,
-      };
+      // Dart's DateTime.parse doesn't handle this format, and dart:io's
+      // HttpDate isn't available on web, so parse manually.
       final parts = httpDate.split(' ');
       // "Thu," "01" "Jan" "2024" "00:00:00" "GMT"
       final day = int.parse(parts[1]);
-      final month = monthMap[parts[2]]!;
+      final month = _months.indexOf(parts[2]) + 1;
+      // Guard: DateTime.utc silently normalizes month 0 to last December.
+      if (month == 0) return httpDate;
       final year = int.parse(parts[3]);
       final timeParts = parts[4].split(':');
       final dt = DateTime.utc(
@@ -197,23 +192,9 @@ class _SettingsViewState extends State<SettingsView> {
         int.parse(timeParts[2]),
       ).toLocal();
 
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
       final hour = dt.hour.toString().padLeft(2, '0');
       final minute = dt.minute.toString().padLeft(2, '0');
-      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute';
+      return '${_months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute';
     } catch (_) {
       return httpDate; // fallback to raw value
     }

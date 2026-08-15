@@ -498,48 +498,24 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                       _loadBookmarks();
                     },
                     itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: SortOrder.newestFirst,
-                        child: Row(
-                          children: [
-                            if (_sortOrder == SortOrder.newestFirst)
-                              const Icon(Icons.check, size: 18),
-                            if (_sortOrder == SortOrder.newestFirst) const SizedBox(width: 8),
-                            const Text('Newest first'),
-                          ],
+                      for (final (order, label) in const [
+                        (SortOrder.newestFirst, 'Newest first'),
+                        (SortOrder.oldestFirst, 'Oldest first'),
+                        (SortOrder.random, 'Random'),
+                        (SortOrder.byHost, 'By host'),
+                      ])
+                        PopupMenuItem(
+                          value: order,
+                          child: Row(
+                            children: [
+                              if (_sortOrder == order) ...[
+                                const Icon(Icons.check, size: 18),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(label),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: SortOrder.oldestFirst,
-                        child: Row(
-                          children: [
-                            if (_sortOrder == SortOrder.oldestFirst)
-                              const Icon(Icons.check, size: 18),
-                            if (_sortOrder == SortOrder.oldestFirst) const SizedBox(width: 8),
-                            const Text('Oldest first'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: SortOrder.random,
-                        child: Row(
-                          children: [
-                            if (_sortOrder == SortOrder.random) const Icon(Icons.check, size: 18),
-                            if (_sortOrder == SortOrder.random) const SizedBox(width: 8),
-                            const Text('Random'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: SortOrder.byHost,
-                        child: Row(
-                          children: [
-                            if (_sortOrder == SortOrder.byHost) const Icon(Icons.check, size: 18),
-                            if (_sortOrder == SortOrder.byHost) const SizedBox(width: 8),
-                            const Text('By host'),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                   IconButton(
