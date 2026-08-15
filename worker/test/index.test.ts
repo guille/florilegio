@@ -13,16 +13,16 @@ async function applySchema() {
     "CREATE TABLE IF NOT EXISTS bookmarks(id TEXT PRIMARY KEY, url TEXT NOT NULL UNIQUE, title TEXT, tags TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   );
   await db.exec(
-    "CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(id UNINDEXED, title, url, content = bookmarks, content_rowid = rowid)",
+    "CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(title, url, content = bookmarks, content_rowid = rowid)",
   );
   await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN INSERT INTO bookmarks_fts(rowid, id, title, url) VALUES (new.rowid, new.id, new.title, new.url); END",
+    "CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN INSERT INTO bookmarks_fts(rowid, title, url) VALUES (new.rowid, new.title, new.url); END",
   );
   await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_ad AFTER DELETE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, id, title, url) VALUES ('delete', old.rowid, old.id, old.title, old.url); END",
+    "CREATE TRIGGER IF NOT EXISTS bookmarks_ad AFTER DELETE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, title, url) VALUES ('delete', old.rowid, old.title, old.url); END",
   );
   await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, id, title, url) VALUES ('delete', old.rowid, old.id, old.title, old.url); INSERT INTO bookmarks_fts(rowid, id, title, url) VALUES (new.rowid, new.id, new.title, new.url); END",
+    "CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, title, url) VALUES ('delete', old.rowid, old.title, old.url); INSERT INTO bookmarks_fts(rowid, title, url) VALUES (new.rowid, new.title, new.url); END",
   );
   // sync_metadata for If-Modified-Since support (including deletes)
   await db.exec(

@@ -83,13 +83,13 @@ app.get("/bookmarks", async (c) => {
       c.env.DB.prepare(
         `SELECT COUNT(*) as total
              FROM bookmarks b
-             JOIN bookmarks_fts f ON b.id = f.id
+             JOIN bookmarks_fts f ON b.rowid = f.rowid
             WHERE bookmarks_fts MATCH ?${tagClause}`,
       ).bind(...filterParams),
       c.env.DB.prepare(
         `SELECT b.*
              FROM bookmarks b
-             JOIN bookmarks_fts f ON b.id = f.id
+             JOIN bookmarks_fts f ON b.rowid = f.rowid
             WHERE bookmarks_fts MATCH ?${tagClause}
             ORDER BY b.created_at DESC, b.id ASC
             LIMIT ? OFFSET ?`,
