@@ -10,11 +10,6 @@ import { HTTPException } from "hono/http-exception";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type Env = {
-  DB: D1Database;
-  API_TOKEN: string;
-};
-
 type Bookmark = {
   id: string;
   url: string;
@@ -26,16 +21,24 @@ type Bookmark = {
 
 // ── App ────────────────────────────────────────────────────────────────────────
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-// CORS — allow any origin so a future webapp can call the API
-app.use("*", cors({ origin: "*", allowHeaders: ["Authorization", "Content-Type"] }));
+// CORS — allow any origin
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Authorization", "Content-Type"],
+    // Not CORS-safelisted, so browsers hide it unless exposed explicitly
+    exposeHeaders: ["X-Total-Count"],
+  }),
+);
 
 // Auth — every request must carry:  Authorization: Bearer <API_TOKEN>
 // (Skip OPTIONS preflight — CORS middleware already handles it)
 app.use("*", async (c, next) => {
   if (c.req.method === "OPTIONS") return next();
-  return bearerAuth<{ Bindings: Env }>({ token: c.env.API_TOKEN })(c, next);
+  return bearerAuth<{ Bindings: CloudflareBindings }>({ token: c.env.API_TOKEN })(c, next);
 });
 
 // ── List  GET /bookmarks ───────────────────────────────────────────────────────
@@ -43,6 +46,8 @@ app.use("*", async (c, next) => {
 //   ?tag=devops           tag contains "devops" (simple LIKE, good enough for personal use)
 //   ?q=hono               full-text search across title + url
 //   ?limit=50&offset=0    pagination
+//
+//   q and tag compose when both are given.
 
 app.get("/bookmarks", async (c) => {
   const { tag, q, limit: rawLimit, offset: rawOffset } = c.req.query();
@@ -69,57 +74,45 @@ app.get("/bookmarks", async (c) => {
 
   // Use FTS when there's a search term, plain table otherwise.
   if (q) {
-    // Count total matches for pagination header
-    const { total } = (await c.env.DB.prepare(
-      `SELECT COUNT(*) as total
-           FROM bookmarks b
-           JOIN bookmarks_fts f ON b.id = f.id
-          WHERE bookmarks_fts MATCH ?`,
-    )
-      .bind('"' + q.replace(/"/g, '""') + '"*')
-      .first<{ total: number }>()) ?? { total: 0 };
+    const match = '"' + q.replace(/"/g, '""') + '"*';
+    const tagClause = tag ? " AND ',' || b.tags || ',' LIKE ?" : "";
+    const filterParams = tag ? [match, `%,${tag},%`] : [match];
 
-    const { results } = await c.env.DB.prepare(
-      `SELECT b.*
-           FROM bookmarks b
-           JOIN bookmarks_fts f ON b.id = f.id
-          WHERE bookmarks_fts MATCH ?
-          ORDER BY b.created_at DESC, b.id ASC
-          LIMIT ? OFFSET ?`,
-    )
-      .bind('"' + q.replace(/"/g, '""') + '"*', limit, offset)
-      .all<Bookmark>();
+    // Count (for the pagination header) and page in one round trip
+    const [count, page] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `SELECT COUNT(*) as total
+             FROM bookmarks b
+             JOIN bookmarks_fts f ON b.id = f.id
+            WHERE bookmarks_fts MATCH ?${tagClause}`,
+      ).bind(...filterParams),
+      c.env.DB.prepare(
+        `SELECT b.*
+             FROM bookmarks b
+             JOIN bookmarks_fts f ON b.id = f.id
+            WHERE bookmarks_fts MATCH ?${tagClause}
+            ORDER BY b.created_at DESC, b.id ASC
+            LIMIT ? OFFSET ?`,
+      ).bind(...filterParams, limit, offset),
+    ]);
 
-    c.header("X-Total-Count", String(total));
-    return c.json(results);
+    c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
+    return c.json(page.results as Bookmark[]);
   }
 
-  let countSql = "SELECT COUNT(*) as total FROM bookmarks WHERE 1=1";
-  let sql = "SELECT * FROM bookmarks WHERE 1=1";
-  const countParams: unknown[] = [];
-  const params: unknown[] = [];
-
-  if (tag) {
-    countSql += " AND ',' || tags || ',' LIKE ?";
-    countParams.push(`%,${tag},%`);
-    sql += " AND ',' || tags || ',' LIKE ?";
-    params.push(`%,${tag},%`);
-  }
-
-  const { total } = (await c.env.DB.prepare(countSql)
-    .bind(...countParams)
-    .first<{ total: number }>()) ?? { total: 0 };
+  const where = tag ? " WHERE ',' || tags || ',' LIKE ?" : "";
+  const whereParams = tag ? [`%,${tag},%`] : [];
 
   // Deterministic ordering: created_at DESC, then id ASC as tiebreaker
-  sql += " ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?";
-  params.push(limit, offset);
+  const [count, page] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT COUNT(*) as total FROM bookmarks${where}`).bind(...whereParams),
+    c.env.DB.prepare(
+      `SELECT * FROM bookmarks${where} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`,
+    ).bind(...whereParams, limit, offset),
+  ]);
 
-  const { results } = await c.env.DB.prepare(sql)
-    .bind(...params)
-    .all<Bookmark>();
-
-  c.header("X-Total-Count", String(total));
-  return c.json(results);
+  c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
+  return c.json(page.results as Bookmark[]);
 });
 
 // ── Export  GET /bookmarks/export ───────────────────────────────────────────────
@@ -175,51 +168,25 @@ app.post("/bookmarks/import", async (c) => {
     rows.push({ id, url, title, tags, created_at: createdAt, updated_at: updatedAt });
   }
 
-  // Collect existing URLs in one query so we can skip duplicates.
-  // D1 doesn't support large IN-clauses well, so batch in groups of 50.
-  const urlSet = new Set(rows.map((r) => r.url));
-  const existingUrls = new Set<string>();
-
-  const urlList = [...urlSet];
-  for (let i = 0; i < urlList.length; i += 50) {
-    const chunk = urlList.slice(i, i + 50);
-    const placeholders = chunk.map(() => "?").join(",");
-    const { results } = await c.env.DB.prepare(
-      `SELECT url FROM bookmarks WHERE url IN (${placeholders})`,
-    )
-      .bind(...chunk)
-      .all<{ url: string }>();
-    for (const r of results) existingUrls.add(r.url);
-  }
+  // OR IGNORE skips rows conflicting on url or id — whether against existing
+  // data or duplicates within the payload itself — without failing the batch.
+  // RETURNING tells apart inserted rows from ignored ones (meta.changes can't:
+  // it also counts trigger writes).
+  const stmts = rows.map((row) =>
+    c.env.DB.prepare(
+      `INSERT OR IGNORE INTO bookmarks (id, url, title, tags, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+    ).bind(row.id, row.url, row.title, row.tags, row.created_at, row.updated_at),
+  );
 
   let imported = 0;
-  let skipped = 0;
-
-  // Insert in batches using D1 batch API.
-  const stmts: D1PreparedStatement[] = [];
-
-  for (const row of rows) {
-    if (existingUrls.has(row.url)) {
-      skipped++;
-      continue;
-    }
-    stmts.push(
-      c.env.DB.prepare(
-        `INSERT INTO bookmarks (id, url, title, tags, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-      ).bind(row.id, row.url, row.title, row.tags, row.created_at, row.updated_at),
-    );
-  }
 
   if (stmts.length) {
-    await c.env.DB.batch(stmts);
-    imported = stmts.length;
-
-    // Rebuild FTS index to guarantee consistency after batch insert
-    await c.env.DB.exec("INSERT INTO bookmarks_fts(bookmarks_fts) VALUES('rebuild')");
+    const results = await c.env.DB.batch<{ id: string }>(stmts);
+    imported = results.filter((r) => r.results.length > 0).length;
   }
 
-  return c.json({ imported, skipped, errors });
+  return c.json({ imported, skipped: rows.length - imported, errors });
 });
 
 // ── Get one  GET /bookmarks/:id ────────────────────────────────────────────────
@@ -254,24 +221,22 @@ app.post("/bookmarks", async (c) => {
   const now = new Date().toISOString();
 
   // Atomic duplicate check via ON CONFLICT — avoids TOCTOU race.
-  const { meta } = await c.env.DB.prepare(
+  // RETURNING yields the created row, or nothing on conflict.
+  const created = await c.env.DB.prepare(
     `INSERT INTO bookmarks (id, url, title, tags, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(url) DO NOTHING`,
+       ON CONFLICT(url) DO NOTHING
+       RETURNING *`,
   )
     .bind(id, url, title, tags, now, now)
-    .run();
+    .first<Bookmark>();
 
-  if (!meta.changes) {
+  if (!created) {
     const existing = await c.env.DB.prepare("SELECT id FROM bookmarks WHERE url = ?")
       .bind(url)
       .first<{ id: string }>();
     return c.json({ error: "Bookmark already exists", existing_id: existing?.id }, 409);
   }
-
-  const created = await c.env.DB.prepare("SELECT * FROM bookmarks WHERE id = ?")
-    .bind(id)
-    .first<Bookmark>();
 
   return c.json(created, 201);
 });
@@ -282,8 +247,6 @@ app.post("/bookmarks", async (c) => {
 //   Accepted: title, tags
 
 app.patch("/bookmarks/:id", async (c) => {
-  await findOrThrow(c.env.DB, c.req.param("id")); // 404 guard
-
   const body = await c.req.json<Partial<Bookmark> & { tags?: string | string[] }>();
 
   const fields: string[] = [];
@@ -305,13 +268,14 @@ app.patch("/bookmarks/:id", async (c) => {
   fields.push("updated_at = ?");
   values.push(new Date().toISOString(), c.req.param("id"));
 
-  await c.env.DB.prepare(`UPDATE bookmarks SET ${fields.join(", ")} WHERE id = ?`)
+  // Single statement: existence check, update, and read-back are atomic
+  const updated = await c.env.DB.prepare(
+    `UPDATE bookmarks SET ${fields.join(", ")} WHERE id = ? RETURNING *`,
+  )
     .bind(...values)
-    .run();
-
-  const updated = await c.env.DB.prepare("SELECT * FROM bookmarks WHERE id = ?")
-    .bind(c.req.param("id"))
     .first<Bookmark>();
+
+  if (!updated) throw new HTTPException(404, { message: "Bookmark not found" });
 
   return c.json(updated);
 });
@@ -371,7 +335,7 @@ async function findOrThrow(db: D1Database, id: string): Promise<Bookmark> {
   return row;
 }
 
-/** Get the most recent updated_at as a Date, or null if table is empty.
+/** Read last_modified from sync_metadata as a Date, or null if unset/invalid.
  *  Truncated to seconds since HTTP dates have 1-second resolution. */
 async function getLastModified(db: D1Database): Promise<Date | null> {
   const row = await db

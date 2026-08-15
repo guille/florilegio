@@ -301,6 +301,32 @@ describe("Florilegio API", () => {
     expect(body[0].title).toBe("Hono framework");
   });
 
+  it("finds imported bookmarks via FTS", async () => {
+    const importRes = await exports.default.fetch("http://localhost/bookmarks/import", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify([{ url: "https://hono.dev", title: "Hono framework" }]),
+    });
+    expect(importRes.status).toBe(200);
+    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono", { headers: auth });
+    const body = await res.json<any[]>();
+    expect(body.length).toBe(1);
+    expect(body[0].title).toBe("Hono framework");
+  });
+
+  it("combines FTS search with tag filter", async () => {
+    await createBookmark({ url: "https://hono.dev", title: "Hono framework", tags: "js,web" });
+    await createBookmark({ url: "https://hono.dev/docs", title: "Hono docs", tags: "docs" });
+    await createBookmark({ url: "https://react.dev", title: "React docs", tags: "js,web" });
+    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono&tag=js", {
+      headers: auth,
+    });
+    const body = await res.json<any[]>();
+    expect(body.length).toBe(1);
+    expect(body[0].url).toBe("https://hono.dev/");
+    expect(res.headers.get("X-Total-Count")).toBe("1");
+  });
+
   // ── Tag filter ───────────────────────────────────────────────────────────
 
   it("filters by tag", async () => {
