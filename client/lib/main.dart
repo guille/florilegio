@@ -62,12 +62,21 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
     );
   }
 
+  // Settings values the services were built from; theme-only changes
+  // must not dispose the API client (in-flight requests, pushed routes).
+  String? _builtBaseUrl;
+  String? _builtToken;
+
   void _onSettingsChanged() {
-    _rebuildServices();
+    if (widget.settings.baseUrl != _builtBaseUrl || widget.settings.token != _builtToken) {
+      _rebuildServices();
+    }
     setState(() {});
   }
 
   void _rebuildServices() {
+    _builtBaseUrl = widget.settings.baseUrl;
+    _builtToken = widget.settings.token;
     _apiClient?.dispose();
     if (widget.settings.isConfigured) {
       _apiClient = BookmarkApiClient(
@@ -110,6 +119,8 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
         seedColor: const Color(0xFF3E7FA9),
         brightness: Brightness.dark,
       ),
+      fontFamily: "Atkinson Hyperlegible Next",
+      fontFamilyFallback: ["Atkinson Hyperlegible Next"],
     ),
     themeMode: widget.settings.themeMode,
     home: _pendingShareUrl != null && _syncService != null
@@ -124,7 +135,8 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
             settings: widget.settings,
             repository: widget.repository,
             syncService: _syncService,
-            apiClient: _apiClient,
+            // Getter, not instance: pushed routes outlive service rebuilds.
+            apiClient: () => _apiClient,
           ),
   );
 }
@@ -133,7 +145,7 @@ class _HomeRouter extends StatelessWidget {
   final SettingsService settings;
   final BookmarkRepository repository;
   final SyncService? syncService;
-  final BookmarkApiClient? apiClient;
+  final ValueGetter<BookmarkApiClient?> apiClient;
 
   const _HomeRouter({
     required this.settings,

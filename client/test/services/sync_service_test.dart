@@ -104,6 +104,20 @@ void main() {
       expect(pending.first.url, 'https://offline.com');
     });
 
+    test('saveBookmark reports duplicate on 409 without queueing', () async {
+      final client = http_testing.MockClient(
+        (request) async => http.Response('{"error":"Bookmark already exists"}', 409),
+      );
+      final api = makeApi(client);
+      final sync = SyncService(repository: repo, apiClient: api);
+
+      final result = await sync.saveBookmark('https://example.com');
+      expect(result.alreadyExists, true);
+      expect(result.savedRemotely, false);
+      expect(result.queuedLocally, false);
+      expect(await repo.getPending(), isEmpty);
+    });
+
     test('sync flushes pending queue before fetching', () async {
       // Queue a pending bookmark
       await repo.addPending('https://queued.com');

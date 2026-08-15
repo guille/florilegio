@@ -22,6 +22,7 @@ class ShareSaveOverlay extends StatefulWidget {
 class _ShareSaveOverlayState extends State<ShareSaveOverlay> {
   bool _saving = true;
   bool _success = false;
+  bool _alreadyExists = false;
   String? _error;
 
   @override
@@ -35,10 +36,11 @@ class _ShareSaveOverlayState extends State<ShareSaveOverlay> {
       final result = await widget.syncService.saveBookmark(widget.url);
       if (!mounted) return;
 
-      if (result.savedRemotely || result.queuedLocally) {
+      if (result.savedRemotely || result.queuedLocally || result.alreadyExists) {
         setState(() {
           _saving = false;
           _success = true;
+          _alreadyExists = result.alreadyExists;
         });
         await Future<void>.delayed(const Duration(milliseconds: 800));
         _dismiss();
@@ -99,7 +101,10 @@ class _ShareSaveOverlayState extends State<ShareSaveOverlay> {
                   ] else if (_success) ...[
                     Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 48),
                     const SizedBox(height: 16),
-                    Text('Saved!', style: theme.textTheme.titleMedium),
+                    Text(
+                      _alreadyExists ? 'Already saved' : 'Saved!',
+                      style: theme.textTheme.titleMedium,
+                    ),
                   ] else ...[
                     Icon(Icons.error_outline, color: theme.colorScheme.error, size: 48),
                     const SizedBox(height: 16),

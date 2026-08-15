@@ -11,7 +11,11 @@ import 'package:flutter/material.dart';
 class SettingsView extends StatefulWidget {
   final SettingsService settings;
   final bool showBackButton;
-  final BookmarkApiClient? apiClient;
+
+  /// Getter rather than an instance: the client is rebuilt (and the old one
+  /// disposed) whenever credentials change, and this route may outlive that.
+  final ValueGetter<BookmarkApiClient?>? apiClient;
+
   final BookmarkRepository? repository;
 
   const SettingsView({
@@ -64,14 +68,13 @@ class _SettingsViewState extends State<SettingsView> {
   Future<void> _save() async {
     await widget.settings.setBaseUrl(_urlController.text.trim());
     await widget.settings.setToken(_tokenController.text.trim());
+    if (!mounted) return;
     setState(() => _dirty = false);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
   }
 
   Future<void> _export() async {
-    final client = widget.apiClient;
+    final client = widget.apiClient?.call();
     if (client == null) {
       _showSnack('Configure settings first');
       return;
@@ -99,7 +102,7 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Future<void> _import() async {
-    final client = widget.apiClient;
+    final client = widget.apiClient?.call();
     if (client == null) {
       _showSnack('Configure settings first');
       return;
@@ -114,6 +117,7 @@ class _SettingsViewState extends State<SettingsView> {
     } on StateError {
       // Platform can't supply the data (e.g. a non-fetchable web blob URL).
     }
+    if (!mounted) return;
     if (bytes == null || bytes.isEmpty) {
       _showSnack('Could not read file');
       return;

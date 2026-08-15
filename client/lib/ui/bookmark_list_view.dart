@@ -6,7 +6,7 @@ import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/bulk_tag_dialog.dart';
 import 'package:florilegio/ui/tag_editor.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -51,6 +51,11 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   bool _showSearch = false;
   String? _selectedTag;
   Timer? _bannerTimer;
+  Timer? _searchDebounce;
+
+  /// Bumped on every load; a completing load only applies if it's still the
+  /// latest, so slow queries can't overwrite newer results.
+  int _loadGeneration = 0;
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
@@ -79,12 +84,14 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   @override
   void dispose() {
     _bannerTimer?.cancel();
+    _searchDebounce?.cancel();
     _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _closeSearch() {
+    _searchDebounce?.cancel();
     setState(() {
       _showSearch = false;
       _query = '';
@@ -121,13 +128,38 @@ class _BookmarkListViewState extends State<BookmarkListView> {
 
     if (result == null || !mounted) return;
 
-    // Apply changes via N PATCH calls.
-    for (final entry in result.entries) {
-      await widget.syncService.updateBookmark(entry.key, tags: entry.value);
+    // Only PATCH items whose tags actually changed.
+    final changes = {
+      for (final e in result.entries)
+        if (!setEquals(e.value.toSet(), selectedItemTags[e.key])) e.key: e.value,
+    };
+    if (changes.isEmpty) {
+      _clearSelection();
+      return;
     }
 
+    final outcomes = await Future.wait(
+      changes.entries.map((e) async {
+        try {
+          await widget.syncService.updateBookmark(e.key, tags: e.value);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }),
+    );
+    final failed = outcomes.where((ok) => !ok).length;
+
+    if (!mounted) return;
     _clearSelection();
     await _loadBookmarks();
+    if (!mounted) return;
+
+    final applied = changes.length - failed;
+    final msg = failed == 0
+        ? 'Updated $applied bookmark${applied == 1 ? '' : 's'}'
+        : 'Updated $applied bookmark${applied == 1 ? '' : 's'}, $failed failed';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _loadAndSync({bool force = false}) async {
@@ -137,12 +169,13 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   }
 
   Future<void> _loadBookmarks() async {
+    final generation = ++_loadGeneration;
     final bookmarks = await widget.repository.getAll(
       query: _query.isEmpty ? null : _query,
       tag: _selectedTag,
       order: _sortOrder,
     );
-    if (mounted) {
+    if (mounted && generation == _loadGeneration) {
       setState(() {
         _bookmarks = bookmarks;
         _updateAllTags();
@@ -152,6 +185,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   }
 
   Future<void> _sync({bool force = false}) async {
+    if (!mounted || _syncing) return;
     setState(() => _syncing = true);
     try {
       final result = await widget.syncService.sync(force: force);
@@ -301,6 +335,10 @@ class _BookmarkListViewState extends State<BookmarkListView> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Saved locally — will sync when online')));
+    } else if (result.alreadyExists) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Already bookmarked')));
     } else {
       ScaffoldMessenger.of(
         context,
@@ -410,7 +448,11 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                         ),
                         onChanged: (val) {
                           _query = val;
-                          _loadBookmarks();
+                          _searchDebounce?.cancel();
+                          _searchDebounce = Timer(
+                            const Duration(milliseconds: 200),
+                            _loadBookmarks,
+                          );
                         },
                       )
                     : InkWell(

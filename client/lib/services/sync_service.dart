@@ -19,16 +19,37 @@ class SyncResult {
   });
 }
 
-/// Result of saving a bookmark — distinguishes remote vs local-only saves.
+/// Result of saving a bookmark — distinguishes remote, local-only, and
+/// already-saved outcomes.
 class SaveResult {
   final Bookmark? bookmark;
   final bool savedRemotely;
   final bool queuedLocally;
+  final bool alreadyExists;
   final Object? error;
 
-  SaveResult.remote(this.bookmark) : savedRemotely = true, queuedLocally = false, error = null;
-  SaveResult.queued() : bookmark = null, savedRemotely = false, queuedLocally = true, error = null;
-  SaveResult.failed(this.error) : bookmark = null, savedRemotely = false, queuedLocally = false;
+  SaveResult.remote(this.bookmark)
+    : savedRemotely = true,
+      queuedLocally = false,
+      alreadyExists = false,
+      error = null;
+  SaveResult.queued()
+    : bookmark = null,
+      savedRemotely = false,
+      queuedLocally = true,
+      alreadyExists = false,
+      error = null;
+  SaveResult.duplicate()
+    : bookmark = null,
+      savedRemotely = false,
+      queuedLocally = false,
+      alreadyExists = true,
+      error = null;
+  SaveResult.failed(this.error)
+    : bookmark = null,
+      savedRemotely = false,
+      queuedLocally = false,
+      alreadyExists = false;
 }
 
 class SyncService {
@@ -95,21 +116,29 @@ class SyncService {
   }
 
   /// Save a new bookmark. Tries API first; on failure, queues locally.
-  /// If the bookmark has no title, attempts to fetch one from the page.
+  /// A 409 means the bookmark is already on the server — reported as such,
+  /// not queued. If the bookmark has no title, attempts to fetch one from
+  /// the page.
   Future<SaveResult> saveBookmark(String url) async {
     try {
       final title = await _fetchTitleQuietly(url);
       final bookmark = await _apiClient.create(url, title: title);
       await _repository.upsert(bookmark);
       return SaveResult.remote(bookmark);
+    } on ApiException catch (e) {
+      if (e.statusCode == 409) return SaveResult.duplicate();
+      return _queueLocally(url);
+    } catch (_) {
+      return _queueLocally(url);
+    }
+  }
+
+  Future<SaveResult> _queueLocally(String url) async {
+    try {
+      await _repository.addPending(url);
+      return SaveResult.queued();
     } catch (e) {
-      // API failed — try to queue locally.
-      try {
-        await _repository.addPending(url);
-        return SaveResult.queued();
-      } catch (localError) {
-        return SaveResult.failed(localError);
-      }
+      return SaveResult.failed(e);
     }
   }
 
