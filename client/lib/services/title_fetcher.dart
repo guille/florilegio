@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 
 /// Fetches the page title from a URL by looking at (in priority order):
@@ -10,21 +13,17 @@ class TitleFetcher {
   final http.Client _client;
   static const _timeout = Duration(milliseconds: 1500);
 
+  /// Titles live in `<head>`, which fits comfortably in the first 64 KB —
+  /// stop reading (and downloading) there.
+  static const _maxBytes = 65536;
+
   TitleFetcher({http.Client? client}) : _client = client ?? http.Client();
 
   /// Fetch the title for [url]. Returns `null` on failure or timeout.
   Future<String?> fetch(String url) async {
     try {
-      final response = await _client
-          .get(Uri.parse(url), headers: {'User-Agent': 'Florilegio/1.0 (bookmark service)'})
-          .timeout(_timeout);
-
-      if (response.statusCode != 200) return null;
-
-      // Limit how much HTML we inspect — titles live in <head>, so the first
-      // 64 KB is more than enough. This avoids holding multi-MB pages in memory
-      // just to parse a title.
-      final body = response.body.length > 65536 ? response.body.substring(0, 65536) : response.body;
+      final body = await _fetchHead(url).timeout(_timeout);
+      if (body == null) return null;
 
       // 1. og:title
       final ogTitle = _extractMetaContent(body, 'og:title', attribute: 'property');
@@ -49,6 +48,48 @@ class TitleFetcher {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Stream the response and decode only the first [_maxBytes]; the rest of
+  /// the page is never downloaded. Returns what arrived even if the
+  /// connection drops mid-stream, or null on a non-200 / empty response.
+  Future<String?> _fetchHead(String url) async {
+    final request = http.Request('GET', Uri.parse(url))
+      ..headers['User-Agent'] = 'Florilegio/1.0 (bookmark service)';
+    final response = await _client.send(request);
+    if (response.statusCode != 200) return null;
+
+    final buffer = BytesBuilder(copy: false);
+    try {
+      await for (final chunk in response.stream) {
+        buffer.add(chunk);
+        // Breaking cancels the subscription, which closes the connection.
+        if (buffer.length >= _maxBytes) break;
+      }
+    } catch (_) {
+      // Connection dropped mid-stream — parse whatever arrived.
+    }
+    if (buffer.isEmpty) return null;
+
+    final bytes = buffer.takeBytes();
+    return _decode(
+      bytes.length > _maxBytes ? Uint8List.sublistView(bytes, 0, _maxBytes) : bytes,
+      response.headers['content-type'],
+    );
+  }
+
+  /// Decode using the Content-Type charset when given, defaulting to UTF-8.
+  /// Malformed sequences (wrong guess, or a chunk boundary that cut a
+  /// multibyte character) become U+FFFD instead of throwing.
+  static String _decode(Uint8List bytes, String? contentType) {
+    final charset = RegExp('charset="?([^\\s;"]+)', caseSensitive: false)
+        .firstMatch(contentType ?? '')
+        ?.group(1)
+        ?.toLowerCase();
+    return switch (charset) {
+      'iso-8859-1' || 'latin-1' || 'latin1' || 'us-ascii' || 'ascii' => latin1.decode(bytes),
+      _ => utf8.decode(bytes, allowMalformed: true),
+    };
   }
 
   /// Extract `content` from a `<meta>` tag matching [attribute]=[value].

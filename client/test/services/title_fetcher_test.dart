@@ -1,5 +1,7 @@
 // ignore_for_file: missing_whitespace_between_adjacent_strings
 
+import 'dart:convert';
+
 import 'package:florilegio/services/title_fetcher.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +9,27 @@ import 'package:http/testing.dart' as http_testing;
 
 http_testing.MockClient _mockPage(String body, {int status = 200}) =>
     http_testing.MockClient((_) async => http.Response(body, status));
+
+/// Emits the response body as separate chunks, recording how many were read.
+class _ChunkedClient extends http.BaseClient {
+  final List<List<int>> chunks;
+  final Map<String, String> headers;
+  int chunksServed = 0;
+
+  _ChunkedClient(this.chunks, {this.headers = const {}});
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    Stream<List<int>> body() async* {
+      for (final chunk in chunks) {
+        chunksServed++;
+        yield chunk;
+      }
+    }
+
+    return http.StreamedResponse(body(), 200, headers: headers);
+  }
+}
 
 void main() {
   group('TitleFetcher', () {
@@ -122,6 +145,42 @@ void main() {
       final padding = ' ' * 70000;
       final fetcher = TitleFetcher(client: _mockPage('$padding<title>Hidden</title>'));
       expect(await fetcher.fetch('https://example.com'), isNull);
+    });
+
+    test('stops reading the stream once 64KB have arrived', () async {
+      final head = utf8.encode('<html><head><title>Early Title</title></head>');
+      final padding = utf8.encode(' ' * 40000);
+      final client = _ChunkedClient([head, padding, padding, padding, padding]);
+      final fetcher = TitleFetcher(client: client);
+
+      expect(await fetcher.fetch('https://example.com'), 'Early Title');
+      // head + two padding chunks pass 64KB; the rest is never downloaded.
+      expect(client.chunksServed, 3);
+    });
+
+    test('decodes UTF-8 by default when no charset is given', () async {
+      final client = _ChunkedClient([
+        utf8.encode('<html><head><title>Café ☕</title></head></html>'),
+      ], headers: {'content-type': 'text/html'});
+      final fetcher = TitleFetcher(client: client);
+      expect(await fetcher.fetch('https://example.com'), 'Café ☕');
+    });
+
+    test('honors Content-Type charset', () async {
+      final client = _ChunkedClient([
+        latin1.encode('<html><head><title>Café</title></head></html>'),
+      ], headers: {'content-type': 'text/html; charset=iso-8859-1'});
+      final fetcher = TitleFetcher(client: client);
+      expect(await fetcher.fetch('https://example.com'), 'Café');
+    });
+
+    test('survives a chunk boundary cutting a multibyte character', () async {
+      final bytes = utf8.encode('<html><head><title>naïve</title></head></html>');
+      // 'ï' is two bytes in UTF-8; split the response inside it.
+      const splitAt = 25; // mid-title, inside the multibyte sequence region
+      final client = _ChunkedClient([bytes.sublist(0, splitAt), bytes.sublist(splitAt)]);
+      final fetcher = TitleFetcher(client: client);
+      expect(await fetcher.fetch('https://example.com'), 'naïve');
     });
 
     test('og:title takes priority over twitter:title', () async {
