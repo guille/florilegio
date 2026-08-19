@@ -6,7 +6,7 @@ import 'package:florilegio/data/api_client.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/settings_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class SettingsView extends StatefulWidget {
   final SettingsService settings;

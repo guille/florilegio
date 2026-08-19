@@ -7,7 +7,7 @@ import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/bulk_tag_dialog.dart';
 import 'package:florilegio/ui/tag_editor.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 

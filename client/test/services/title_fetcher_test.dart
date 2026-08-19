@@ -159,17 +159,19 @@ void main() {
     });
 
     test('decodes UTF-8 by default when no charset is given', () async {
-      final client = _ChunkedClient([
-        utf8.encode('<html><head><title>Café ☕</title></head></html>'),
-      ], headers: {'content-type': 'text/html'});
+      final client = _ChunkedClient(
+        [utf8.encode('<html><head><title>Café ☕</title></head></html>')],
+        headers: {'content-type': 'text/html'},
+      );
       final fetcher = TitleFetcher(client: client);
       expect(await fetcher.fetch('https://example.com'), 'Café ☕');
     });
 
     test('honors Content-Type charset', () async {
-      final client = _ChunkedClient([
-        latin1.encode('<html><head><title>Café</title></head></html>'),
-      ], headers: {'content-type': 'text/html; charset=iso-8859-1'});
+      final client = _ChunkedClient(
+        [latin1.encode('<html><head><title>Café</title></head></html>')],
+        headers: {'content-type': 'text/html; charset=iso-8859-1'},
+      );
       final fetcher = TitleFetcher(client: client);
       expect(await fetcher.fetch('https://example.com'), 'Café');
     });

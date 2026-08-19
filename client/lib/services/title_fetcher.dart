@@ -82,10 +82,10 @@ class TitleFetcher {
   /// Malformed sequences (wrong guess, or a chunk boundary that cut a
   /// multibyte character) become U+FFFD instead of throwing.
   static String _decode(Uint8List bytes, String? contentType) {
-    final charset = RegExp('charset="?([^\\s;"]+)', caseSensitive: false)
-        .firstMatch(contentType ?? '')
-        ?.group(1)
-        ?.toLowerCase();
+    final charset = RegExp(
+      'charset="?([^\\s;"]+)',
+      caseSensitive: false,
+    ).firstMatch(contentType ?? '')?.group(1)?.toLowerCase();
     return switch (charset) {
       'iso-8859-1' || 'latin-1' || 'latin1' || 'us-ascii' || 'ascii' => latin1.decode(bytes),
       _ => utf8.decode(bytes, allowMalformed: true),

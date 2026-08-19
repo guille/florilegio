@@ -1,5 +1,5 @@
 import 'package:florilegio/domain/bulk_tag_editor.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A self-contained dialog for bulk-editing tags across multiple items.
 ///
