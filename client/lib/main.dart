@@ -10,7 +10,7 @@ import 'package:florilegio/ui/bookmark_list_view.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:florilegio/ui/share_save_overlay.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {

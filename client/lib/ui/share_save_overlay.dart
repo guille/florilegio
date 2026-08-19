@@ -1,6 +1,6 @@
 import 'package:florilegio/services/sync_service.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 /// Minimal overlay shown when a URL is shared into the app.

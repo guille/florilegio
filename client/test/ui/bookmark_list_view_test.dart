@@ -5,7 +5,7 @@ import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/bookmark_list_view.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
