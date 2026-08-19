@@ -1,0 +1,13 @@
+# Cross-origin isolation. Required for multi-threaded skwasm: without it the
+# Wasm renderer silently falls back to single-threaded and warns in the console.
+# Inert for the current dart2js/canvaskit build, so it's safe to ship ahead of
+# the Wasm switch.
+#
+# credentialless, not require-corp: the engine falls back to fonts.gstatic.com
+# for glyphs the bundled fonts don't cover (fontFallbackBaseUrl), and gstatic
+# doesn't send Cross-Origin-Resource-Policy. credentialless is also what
+# Flutter's own dev server sends. Only blink gets skwasm today, and blink
+# supports credentialless, so this costs nothing.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

@@ -30,7 +30,7 @@ run         = "flutter run --pid-file=.flutter.pid"
 description = "Runs the frontend (Android)"
 
 [tasks."run:web"]
-run         = "flutter run -d web-server --no-web-resources-cdn"
+run         = "flutter run -d web-server --no-web-resources-cdn --wasm"
 description = "Runs the frontend (web)"
 
 [tasks."build:android"]
@@ -38,9 +38,9 @@ depends = "decrypt-signing"
 run     = "flutter build apk"
 
 [tasks."build:web"]
-sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart"]
-outputs = { auto = true }
-run     = "flutter build web --release --no-web-resources-cdn"
+sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart", "web/**/*"]
+outputs = ["build/web-dist/**/*"]
+run     = "flutter build web --release --no-web-resources-cdn -o build/web-dist"
 
 [tasks."deploy:web"]
 depends     = "build:web"
