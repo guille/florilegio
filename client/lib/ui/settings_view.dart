@@ -86,12 +86,12 @@ class _SettingsViewState extends State<SettingsView> {
       final pretty = const JsonEncoder.withIndent('  ').convert(jsonDecode(json));
       final bytes = utf8.encode(pretty);
 
-      final path = await FilePicker.saveFile(
+      final uri = await FilePicker.saveFile(
         dialogTitle: 'Save export',
         fileName: 'florilegio-export.json',
         bytes: bytes,
       );
-      _showSnack(kIsWeb || path != null ? 'Exported successfully' : 'Export cancelled');
+      _showSnack(kIsWeb || uri != null ? 'Exported successfully' : 'Export cancelled');
     } on ApiException catch (e) {
       _showSnack('Export failed: ${e.userMessage}');
     } catch (e) {
@@ -108,13 +108,13 @@ class _SettingsViewState extends State<SettingsView> {
       return;
     }
 
-    final result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
-    if (result == null || result.files.isEmpty) return;
+    final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['json']);
+    if (file == null) return;
 
     Uint8List? bytes;
     try {
-      bytes = await result.files.first.readAsBytes();
-    } on StateError {
+      bytes = await file.readAsBytes();
+    } catch (_) {
       // Platform can't supply the data (e.g. a non-fetchable web blob URL).
     }
     if (!mounted) return;
