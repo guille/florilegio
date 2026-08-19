@@ -18,16 +18,16 @@
 			"file_exclude_patterns": [
 				"*.jar",
 				"*.bat"
-			]
+			],
 		},
 		{
-			"path": "ff-extension"
+			"path": "ff-extension",
 		},
 		{
 			"path": "worker",
 			"folder_exclude_patterns": [
 				".wrangler"
-			]
+			],
 		}
 	],
 	"config": {

@@ -46,11 +46,18 @@ abstract class BookmarkRepository {
 
   // ── Sync metadata ──────────────────────────────────────────────────────
 
-  /// Store the Last-Modified value from the most recent successful sync.
-  Future<void> setLastModified(String? value);
+  /// Store the validator (ETag) the server issued for the last synced
+  /// snapshot. Opaque: echoed back verbatim, never parsed.
+  Future<void> setSyncToken(String? value);
 
-  /// Retrieve the stored Last-Modified value, or null if not set.
-  Future<String?> getLastModified();
+  /// Retrieve the stored sync validator, or null if there is none.
+  Future<String?> getSyncToken();
+
+  /// Store when this device last completed a sync (ISO-8601).
+  Future<void> setLastRefreshed(String? value);
+
+  /// Retrieve when this device last completed a sync, or null if never.
+  Future<String?> getLastRefreshed();
 
   // ── Delete counter ─────────────────────────────────────────────────────
 

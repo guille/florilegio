@@ -24,7 +24,9 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
     }
 
     if (tag != null) {
-      results = results.where((b) => b.tags.contains(tag)).toList();
+      // Case-insensitive whole-tag match, matching the sqlite repository
+      final t = tag.toLowerCase();
+      results = results.where((b) => b.tags.any((x) => x.toLowerCase() == t)).toList();
     }
 
     if (order == SortOrder.random) {
@@ -110,13 +112,20 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
 
   // ── Sync metadata ──────────────────────────────────────────────────────
 
-  String? _lastModified;
+  String? _syncToken;
+  String? _lastRefreshed;
 
   @override
-  Future<void> setLastModified(String? value) async => _lastModified = value;
+  Future<void> setSyncToken(String? value) async => _syncToken = value;
 
   @override
-  Future<String?> getLastModified() async => _lastModified;
+  Future<String?> getSyncToken() async => _syncToken;
+
+  @override
+  Future<void> setLastRefreshed(String? value) async => _lastRefreshed = value;
+
+  @override
+  Future<String?> getLastRefreshed() async => _lastRefreshed;
 
   // ── Delete counter ─────────────────────────────────────────────────────
 

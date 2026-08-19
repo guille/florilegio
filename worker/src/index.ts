@@ -28,9 +28,12 @@ app.use(
   "*",
   cors({
     origin: "*",
-    allowHeaders: ["Authorization", "Content-Type"],
-    // Not CORS-safelisted, so browsers hide it unless exposed explicitly
-    exposeHeaders: ["X-Total-Count"],
+    // If-None-Match is not a safelisted request header, so without it here the
+    // preflight rejects the web client's conditional GET.
+    allowHeaders: ["Authorization", "Content-Type", "If-None-Match"],
+    // Not CORS-safelisted, so browsers hide these unless exposed explicitly.
+    // ETag in particular: Last-Modified is safelisted, ETag is not.
+    exposeHeaders: ["X-Total-Count", "ETag"],
     // Cache preflights; favicon loads trigger one per icon URL otherwise
     maxAge: 86400,
   }),
@@ -45,7 +48,7 @@ app.use("*", async (c, next) => {
 
 // ── List  GET /bookmarks ───────────────────────────────────────────────────────
 //
-//   ?tag=devops           tag contains "devops" (simple LIKE, good enough for personal use)
+//   ?tag=devops           bookmark carries that exact tag (case-insensitive)
 //   ?q=hono               full-text search across title + url
 //   ?limit=50&offset=0    pagination
 //
@@ -57,28 +60,19 @@ app.get("/bookmarks", async (c) => {
   const offset = clampInt(rawOffset, 0, 0, Infinity);
 
   // ── Conditional GET ──────────────────────────────────────────────────────
-  // When no filters are active, support If-Modified-Since to let clients
-  // skip a full sync when nothing has changed.
-  if (!q && !tag) {
-    const lastModified = await getLastModified(c.env.DB);
-    if (lastModified) {
-      c.header("Last-Modified", lastModified.toUTCString());
-
-      const ims = c.req.header("If-Modified-Since");
-      if (ims) {
-        const imsDate = new Date(ims);
-        if (!isNaN(imsDate.getTime()) && lastModified <= imsDate) {
-          return c.body(null, 304);
-        }
-      }
-    }
-  }
+  // The version counter is a valid strong validator for any list URL: for a
+  // fixed URL, an unchanged version means an identical result set in an
+  // identical order, so filtered requests get this too.
+  const etag = `"${await getVersion(c.env.DB)}"`;
+  c.header("ETag", etag);
+  // A 304 must still carry the ETag it would have sent with a 200.
+  if (matchesEtag(c.req.header("If-None-Match"), etag)) return c.body(null, 304);
 
   // Use FTS when there's a search term, plain table otherwise.
   if (q) {
     const match = '"' + q.replace(/"/g, '""') + '"*';
-    const tagClause = tag ? " AND ',' || b.tags || ',' LIKE ?" : "";
-    const filterParams = tag ? [match, `%,${tag},%`] : [match];
+    const tagClause = tag ? ` AND ${TAG_MATCH("b.tags")}` : "";
+    const filterParams = tag ? [match, tagNeedle(tag)] : [match];
 
     // Count (for the pagination header) and page in one round trip
     const [count, page] = await c.env.DB.batch([
@@ -102,8 +96,8 @@ app.get("/bookmarks", async (c) => {
     return c.json(page.results as Bookmark[]);
   }
 
-  const where = tag ? " WHERE ',' || tags || ',' LIKE ?" : "";
-  const whereParams = tag ? [`%,${tag},%`] : [];
+  const where = tag ? ` WHERE ${TAG_MATCH("tags")}` : "";
+  const whereParams = tag ? [tagNeedle(tag)] : [];
 
   // Deterministic ordering: created_at DESC, then id ASC as tiebreaker
   const [count, page] = await c.env.DB.batch([
@@ -164,8 +158,8 @@ app.post("/bookmarks/import", async (c) => {
         : null;
     const id = typeof b.id === "string" && b.id ? b.id : crypto.randomUUID();
     const now = new Date().toISOString();
-    const createdAt = typeof b.created_at === "string" ? b.created_at : now;
-    const updatedAt = typeof b.updated_at === "string" ? b.updated_at : now;
+    const createdAt = toIso(b.created_at) ?? now;
+    const updatedAt = toIso(b.updated_at) ?? now;
 
     rows.push({ id, url, title, tags, created_at: createdAt, updated_at: updatedAt });
   }
@@ -348,6 +342,25 @@ app.onError((err, c) => {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+/** Match one whole tag inside the comma-separated `tags` column.
+ *
+ *  instr() rather than LIKE: a LIKE pattern would treat % and _ in the
+ *  caller-supplied tag as wildcards, so ?tag=%25 matched every tagged row.
+ *  lower() on both sides keeps LIKE's ASCII case-insensitivity. NULL tags
+ *  concatenate to NULL and are correctly excluded either way. */
+const TAG_MATCH = (col: string) => `instr(lower(',' || ${col} || ','), lower(?)) > 0`;
+
+const tagNeedle = (tag: string) => `,${tag},`;
+
+/** Normalize a caller-supplied timestamp to ISO-8601, or null if unusable.
+ *  created_at is sorted lexicographically, so an arbitrary string would order
+ *  unpredictably and corrupt pagination for every row. */
+function toIso(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
 /** Parse a query-string integer with bounds. */
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
   const n = parseInt(raw ?? "", 10);
@@ -372,19 +385,21 @@ async function findOrThrow(db: D1Database, id: string): Promise<Bookmark> {
   return row;
 }
 
-/** Read last_modified from sync_metadata as a Date, or null if unset/invalid.
- *  Truncated to seconds since HTTP dates have 1-second resolution. */
-async function getLastModified(db: D1Database): Promise<Date | null> {
+/** Monotonic counter bumped by trigger on every bookmark insert/update/delete. */
+async function getVersion(db: D1Database): Promise<number> {
   const row = await db
-    .prepare("SELECT value FROM sync_metadata WHERE key = 'last_modified'")
-    .first<{ value: string | null }>();
-  if (!row?.value) return null;
-  const d = new Date(row.value);
-  if (isNaN(d.getTime())) return null;
-  // Truncate to second precision so round-tripping through HTTP date headers
-  // (which lack milliseconds) produces stable comparisons.
-  d.setMilliseconds(0);
-  return d;
+    .prepare("SELECT version FROM bookmarks_state WHERE id = 1")
+    .first<{ version: number }>();
+  return row?.version ?? 0;
+}
+
+/** Does an If-None-Match header match `etag`?
+ *  RFC 9110 §13.1.2: weak comparison, so a W/ prefix is stripped before
+ *  matching, the value may be a list, and `*` matches any representation. */
+function matchesEtag(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  if (header.trim() === "*") return true;
+  return header.split(",").some((t) => t.trim().replace(/^W\//, "") === etag);
 }
 
 export default app;

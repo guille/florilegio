@@ -374,21 +374,21 @@ void main() {
       expect(local.first.id, 'existing-1');
     });
 
-    test('sync sends If-Modified-Since on second sync', () async {
-      const lastModifiedValue = 'Thu, 01 Jan 2024 00:00:00 GMT';
-      String? capturedIms;
+    test('sync sends If-None-Match on second sync', () async {
+      const etagValue = '"7"';
+      String? capturedInm;
 
       var callCount = 0;
       final client = http_testing.MockClient((request) async {
         if (request.method == 'GET') {
           callCount++;
-          capturedIms = request.headers['if-modified-since'];
+          capturedInm = request.headers['if-none-match'];
           if (callCount == 1) {
-            // First sync: return data with Last-Modified
+            // First sync: return data with an ETag
             return http.Response(
               jsonEncode(sampleBookmarks),
               200,
-              headers: {'last-modified': lastModifiedValue, 'x-total-count': '2'},
+              headers: {'etag': etagValue, 'x-total-count': '2'},
             );
           } else {
             // Second sync: 304
@@ -400,22 +400,22 @@ void main() {
       final api = makeApi(client);
       final sync = SyncService(repository: repo, apiClient: api);
 
-      // First sync — no IMS header
+      // First sync — no conditional header
       await sync.sync();
-      expect(capturedIms, isNull);
+      expect(capturedInm, isNull);
 
-      // Second sync — should send IMS from first response
-      capturedIms = null;
+      // Second sync — should send the ETag from the first response
+      capturedInm = null;
       final result = await sync.sync();
-      expect(capturedIms, lastModifiedValue);
+      expect(capturedInm, etagValue);
       expect(result.notModified, true);
     });
 
-    test('sync invalidates Last-Modified after flushing pending items', () async {
-      // Set up: first sync succeeds and caches Last-Modified
-      const lastModifiedValue = 'Thu, 01 Jan 2024 00:00:00 GMT';
+    test('sync invalidates the sync token after flushing pending items', () async {
+      // Set up: first sync succeeds and caches the sync token
+      const etagValue = '"7"';
       var callCount = 0;
-      String? capturedIms;
+      String? capturedInm;
 
       final createdBookmark = {
         'id': 'fl-1',
@@ -433,11 +433,11 @@ void main() {
         }
         if (request.method == 'GET') {
           callCount++;
-          capturedIms = request.headers['if-modified-since'];
+          capturedInm = request.headers['if-none-match'];
           return http.Response(
             jsonEncode(sampleBookmarks),
             200,
-            headers: {'last-modified': lastModifiedValue, 'x-total-count': '2'},
+            headers: {'etag': etagValue, 'x-total-count': '2'},
           );
         }
         return http.Response('', 404);
@@ -445,32 +445,32 @@ void main() {
       final api = makeApi(client);
       final sync = SyncService(repository: repo, apiClient: api);
 
-      // First sync — caches Last-Modified
+      // First sync — caches the sync token
       await sync.sync();
       expect(callCount, 1);
 
       // Queue a pending bookmark — this should invalidate the cache
       await repo.addPending('https://flushed.com');
 
-      // Second sync — should NOT send IMS because we flushed items
-      capturedIms = 'should-be-cleared';
+      // Second sync — should NOT send the token because we flushed items
+      capturedInm = 'should-be-cleared';
       await sync.sync();
-      expect(capturedIms, isNull);
+      expect(capturedInm, isNull);
     });
 
-    test('sync with force=true skips If-Modified-Since', () async {
-      const lastModifiedValue = 'Thu, 01 Jan 2024 00:00:00 GMT';
-      String? capturedIms;
+    test('sync with force=true skips If-None-Match', () async {
+      const etagValue = '"7"';
+      String? capturedInm;
 
       var callCount = 0;
       final client = http_testing.MockClient((request) async {
         if (request.method == 'GET') {
           callCount++;
-          capturedIms = request.headers['if-modified-since'];
+          capturedInm = request.headers['if-none-match'];
           return http.Response(
             jsonEncode(sampleBookmarks),
             200,
-            headers: {'last-modified': lastModifiedValue, 'x-total-count': '2'},
+            headers: {'etag': etagValue, 'x-total-count': '2'},
           );
         }
         return http.Response('', 404);
@@ -478,26 +478,26 @@ void main() {
       final api = makeApi(client);
       final sync = SyncService(repository: repo, apiClient: api);
 
-      // First sync — stores Last-Modified
+      // First sync — stores the sync token
       await sync.sync();
       expect(callCount, 1);
-      expect(capturedIms, isNull);
+      expect(capturedInm, isNull);
 
-      // Second sync with force — should NOT send IMS
-      capturedIms = 'should-be-cleared';
+      // Second sync with force — should NOT send the token
+      capturedInm = 'should-be-cleared';
       await sync.sync(force: true);
-      expect(capturedIms, isNull);
+      expect(capturedInm, isNull);
       expect(callCount, 2);
     });
 
-    test('lastModified is persisted in repository', () async {
-      const lastModifiedValue = 'Thu, 01 Jan 2024 00:00:00 GMT';
+    test('sync token is persisted in repository', () async {
+      const etagValue = '"7"';
 
       final client = http_testing.MockClient(
         (request) async => http.Response(
           jsonEncode(sampleBookmarks),
           200,
-          headers: {'last-modified': lastModifiedValue, 'x-total-count': '2'},
+          headers: {'etag': etagValue, 'x-total-count': '2'},
         ),
       );
       final api = makeApi(client);
@@ -506,7 +506,139 @@ void main() {
       await sync.sync();
 
       // Verify the value was persisted
-      expect(await repo.getLastModified(), lastModifiedValue);
+      expect(await repo.getSyncToken(), etagValue);
+    });
+
+    test('last refreshed is stamped locally, including on 304', () async {
+      var callCount = 0;
+      final client = http_testing.MockClient((request) async {
+        callCount++;
+        if (callCount == 1) {
+          return http.Response(
+            jsonEncode(sampleBookmarks),
+            200,
+            headers: {'etag': '"7"', 'x-total-count': '2'},
+          );
+        }
+        return http.Response('', 304);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      await sync.sync();
+      final afterFirst = await repo.getLastRefreshed();
+      // A local timestamp, not the server's opaque validator
+      expect(DateTime.tryParse(afterFirst!), isNotNull);
+
+      // A 304 is still a successful refresh, so the stamp must advance
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final result = await sync.sync();
+      expect(result.notModified, true);
+      final afterSecond = await repo.getLastRefreshed();
+      expect(DateTime.parse(afterSecond!).isAfter(DateTime.parse(afterFirst)), true);
+    });
+
+    test('a torn multi-page snapshot stores no sync token', () async {
+      // 250 bookmarks => two pages. The ETag changes between them, meaning a
+      // write landed mid-pagination and the assembled list spans two states.
+      List<Map<String, dynamic>> rows(int from, int to) => [
+        for (var i = from; i < to; i++)
+          {
+            'id': 'id-$i',
+            'url': 'https://example.com/$i',
+            'title': 'T$i',
+            'tags': null,
+            'created_at': '2024-01-01T00:00:00.000Z',
+            'updated_at': '2024-01-01T00:00:00.000Z',
+          },
+      ];
+
+      final client = http_testing.MockClient((request) async {
+        final offset = int.parse(request.url.queryParameters['offset']!);
+        final page = offset == 0 ? rows(0, 200) : rows(200, 250);
+        return http.Response(
+          jsonEncode(page),
+          200,
+          headers: {'etag': offset == 0 ? '"7"' : '"8"', 'x-total-count': '250'},
+        );
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.count, 250);
+      // Rows are kept, but no validator is cached for a state we never saw
+      expect(await repo.getSyncToken(), isNull);
+    });
+
+    test('a row created mid-pagination does not yield duplicate rows', () async {
+      // Faithful row shift: 250 rows, page 0 takes ids 0..199. A new bookmark is
+      // then created and sorts first (created_at DESC), pushing everything right
+      // by one, so offset=200 now starts at id-199 — already returned on page 0.
+      Map<String, dynamic> row(String id) => {
+        'id': id,
+        'url': 'https://example.com/$id',
+        'title': id,
+        'tags': null,
+        'created_at': '2024-01-01T00:00:00.000Z',
+        'updated_at': '2024-01-01T00:00:00.000Z',
+      };
+
+      final client = http_testing.MockClient((request) async {
+        final offset = int.parse(request.url.queryParameters['offset']!);
+        if (offset == 0) {
+          return http.Response(
+            jsonEncode([for (var i = 0; i < 200; i++) row('id-$i')]),
+            200,
+            headers: {'etag': '"7"', 'x-total-count': '250'},
+          );
+        }
+        return http.Response(
+          jsonEncode([for (var i = 199; i < 249; i++) row('id-$i')]),
+          200,
+          // Version moved because of the insert, so this is a torn snapshot
+          headers: {'etag': '"8"', 'x-total-count': '251'},
+        );
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+
+      final stored = await repo.getAll();
+      final ids = stored.map((b) => b.id).toList();
+      // id-199 came back on both pages; it must be stored exactly once
+      expect(ids.length, ids.toSet().length, reason: 'duplicate ids in local store');
+      expect(ids.where((id) => id == 'id-199').length, 1);
+      // Torn, so no validator is cached and the next sync refetches
+      expect(await repo.getSyncToken(), isNull);
+    });
+
+    test('a consistent multi-page snapshot stores the sync token', () async {
+      List<Map<String, dynamic>> rows(int from, int to) => [
+        for (var i = from; i < to; i++)
+          {
+            'id': 'id-$i',
+            'url': 'https://example.com/$i',
+            'title': 'T$i',
+            'tags': null,
+            'created_at': '2024-01-01T00:00:00.000Z',
+            'updated_at': '2024-01-01T00:00:00.000Z',
+          },
+      ];
+
+      final client = http_testing.MockClient((request) async {
+        final offset = int.parse(request.url.queryParameters['offset']!);
+        final page = offset == 0 ? rows(0, 200) : rows(200, 250);
+        return http.Response(
+          jsonEncode(page),
+          200,
+          headers: {'etag': '"7"', 'x-total-count': '250'},
+        );
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      await sync.sync();
+      expect(await repo.getSyncToken(), '"7"');
     });
   });
 }

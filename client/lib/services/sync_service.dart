@@ -63,32 +63,36 @@ class SyncService {
   BookmarkApiClient get apiClient => _apiClient;
 
   /// Full sync: flush pending queue, then fetch all remote bookmarks and replace local data.
-  /// When [force] is true (user-initiated refresh), skips If-Modified-Since.
+  /// When [force] is true (user-initiated refresh), skips the conditional GET.
   Future<SyncResult> sync({bool force = false}) async {
     // 1. Flush pending queue first (best-effort, don't fail the whole sync).
     final flushed = await _flushPendingQueue();
 
-    // If we flushed items, invalidate the cached Last-Modified since
-    // the server data has changed.
+    // If we flushed items, the server data has changed under us, so the cached
+    // validator no longer describes a state we hold.
     if (flushed > 0) {
-      await _repository.setLastModified(null);
+      await _repository.setSyncToken(null);
     }
 
     // 2. Fetch all remote bookmarks and replace local.
     try {
-      final ifModifiedSince = force ? null : await _repository.getLastModified();
-      final result = await _apiClient.listAll(ifModifiedSince: ifModifiedSince);
+      final ifNoneMatch = force ? null : await _repository.getSyncToken();
+      final result = await _apiClient.listAll(ifNoneMatch: ifNoneMatch);
       if (result == null) {
         // 304 Not Modified — local data is already up to date.
+        await _repository.setLastRefreshed(_now());
         return SyncResult(success: true, flushed: flushed, notModified: true);
       }
       await _repository.replaceAll(result.bookmarks);
-      await _repository.setLastModified(result.lastModified);
+      await _repository.setSyncToken(result.syncToken);
+      await _repository.setLastRefreshed(_now());
       return SyncResult(success: true, count: result.bookmarks.length, flushed: flushed);
     } catch (e) {
       return SyncResult(success: false, exception: e, flushed: flushed);
     }
   }
+
+  static String _now() => DateTime.now().toUtc().toIso8601String();
 
   /// Flush the pending queue: try to push each URL to the API.
   /// Returns the number of successfully flushed bookmarks.

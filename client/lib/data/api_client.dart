@@ -72,21 +72,21 @@ class BookmarkApiClient {
     }
   }
 
-  /// Fetch a single page. Returns (bookmarks, totalCount, lastModified) or
-  /// null if the server returned 304 Not Modified.
+  /// Fetch a single page. Returns (bookmarks, totalCount, etag) or null if the
+  /// server returned 304 Not Modified.
   Future<(List<Bookmark>, int, String?)?> _listPage({
     String? tag,
     String? query,
     int limit = 200,
     int offset = 0,
-    String? ifModifiedSince,
+    String? ifNoneMatch,
   }) async {
     final params = <String, String>{'limit': limit.toString(), 'offset': offset.toString()};
     if (tag != null) params['tag'] = tag;
     if (query != null) params['q'] = query;
 
     final headers = Map<String, String>.from(_headers);
-    if (ifModifiedSince != null) headers['If-Modified-Since'] = ifModifiedSince;
+    if (ifNoneMatch != null) headers['If-None-Match'] = ifNoneMatch;
 
     final response = await _send(() => _client.get(_uri('/bookmarks', params), headers: headers));
     if (response.statusCode == 304) return null;
@@ -96,41 +96,58 @@ class BookmarkApiClient {
     final data = jsonDecode(response.body) as List<dynamic>;
     final bookmarks = data.map((j) => Bookmark.fromJson(j as Map<String, dynamic>)).toList();
     final total = int.tryParse(response.headers['x-total-count'] ?? '') ?? bookmarks.length;
-    final lastModified = response.headers['last-modified'];
-    return (bookmarks, total, lastModified);
+    return (bookmarks, total, response.headers['etag']);
   }
 
-  /// Fetch all bookmarks, paginating automatically until exhausted.
-  /// If [ifModifiedSince] is provided and the server returns 304, returns null
-  /// (meaning "no changes"). Otherwise returns the full list and the
-  /// Last-Modified value from the server (if present).
-  Future<({List<Bookmark> bookmarks, String? lastModified})?> listAll({
-    String? tag,
-    String? query,
-    String? ifModifiedSince,
+  /// Fetch the whole unfiltered collection, paginating until exhausted.
+  /// If [ifNoneMatch] is provided and the server returns 304, returns null
+  /// (meaning "no changes"). Otherwise returns the full list and the validator
+  /// to send next time, which is null when the snapshot cannot be trusted.
+  ///
+  /// Deliberately takes no tag/query: the server's validator is a global
+  /// version, so a token obtained from a filtered list would wrongly satisfy an
+  /// unfiltered request (and vice versa). Keeping this method unfiltered makes
+  /// that mismatch impossible rather than merely discouraged.
+  Future<({List<Bookmark> bookmarks, String? syncToken})?> listAll({
+    String? ifNoneMatch,
   }) async {
     const pageSize = 200;
     final all = <Bookmark>[];
     var offset = 0;
-    String? lastModified;
+    String? firstEtag;
+    var torn = false;
 
     while (true) {
       final result = await _listPage(
-        tag: tag,
-        query: query,
         limit: pageSize,
         offset: offset,
-        ifModifiedSince: offset == 0 ? ifModifiedSince : null,
+        ifNoneMatch: offset == 0 ? ifNoneMatch : null,
       );
       if (result == null) return null; // 304
 
-      final (page, _, lm) = result;
-      if (offset == 0) lastModified = lm;
+      final (page, _, etag) = result;
+      if (offset == 0) {
+        firstEtag = etag;
+      } else if (etag != firstEtag) {
+        // A write landed between pages, so the assembled list is a torn
+        // snapshot spanning two server states. Keep the rows — they are still
+        // roughly current — but return no validator, so the next sync refetches
+        // instead of caching a token for a state we never actually saw.
+        torn = true;
+      }
       all.addAll(page);
       if (page.length < pageSize) break;
       offset += pageSize;
     }
-    return (bookmarks: all, lastModified: lastModified);
+
+    // Offset paging over `created_at DESC` shifts rows right when a bookmark is
+    // created mid-pagination — a new row sorts first — so the tail of one page
+    // reappears at the head of the next. Drop those repeats: the assembled list
+    // feeds replaceAll, and a duplicate id would abort the whole write.
+    final seen = <String>{};
+    final deduped = all.where((b) => seen.add(b.id)).toList();
+
+    return (bookmarks: deduped, syncToken: torn ? null : firstEtag);
   }
 
   /// Fetch a single page of bookmarks (for UI display with pagination).

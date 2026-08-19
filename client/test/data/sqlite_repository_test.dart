@@ -112,6 +112,37 @@ void main() {
       expect(results.length, 1);
     });
 
+    test('getAll treats LIKE metacharacters in tag literally', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', tags: ['dev']));
+      await repo.upsert(makeBookmark(id: 'b', url: 'https://b.com', tags: ['read']));
+
+      for (final tag in ['%', 'de_', 'd%v', '_ev']) {
+        expect(await repo.getAll(tag: tag), isEmpty, reason: 'tag=$tag');
+      }
+    });
+
+    test('getAll treats LIKE metacharacters in query literally', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', title: 'Flutter'));
+      await repo.upsert(makeBookmark(id: 'b', url: 'https://b.com', title: '100% pure'));
+
+      // As a LIKE pattern '%' matched both rows; literally it matches only the
+      // title that actually contains a percent sign.
+      expect((await repo.getAll(query: '%')).map((b) => b.id), ['b']);
+      expect((await repo.getAll(query: '100%')).map((b) => b.id), ['b']);
+      // '_' matched any character, so this used to find 'Flutter'
+      expect(await repo.getAll(query: 'Flu_ter'), isEmpty);
+    });
+
+    test('getAll tag match is case-insensitive', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', tags: ['DevOps']));
+      expect((await repo.getAll(tag: 'devops')).map((b) => b.id), ['a']);
+    });
+
+    test('getAll tag match does not match a partial tag', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', tags: ['devops']));
+      expect(await repo.getAll(tag: 'dev'), isEmpty);
+    });
+
     test('replaceAll clears and replaces', () async {
       await repo.upsert(makeBookmark(id: 'old', url: 'https://old.com'));
       await repo.replaceAll([makeBookmark(id: 'new', url: 'https://new.com')]);
@@ -142,6 +173,60 @@ void main() {
       await repo.incrementDeleteCount(5);
       await repo.resetDeleteCount();
       expect(await repo.getDeleteCount(), 0);
+    });
+  });
+
+  group('SqliteBookmarkRepository replaceAll', () {
+    test('tolerates duplicate ids in the input', () async {
+      // A torn multi-page sync can repeat a row across page boundaries. With the
+      // default abort algorithm this aborted the batch and rolled back the whole
+      // replacement, so the sync failed outright.
+      final dupe = makeBookmark(id: 'a', url: 'https://a.com', title: 'A');
+      await repo.replaceAll([
+        dupe,
+        makeBookmark(id: 'b', url: 'https://b.com', title: 'B'),
+        dupe,
+      ]);
+
+      final all = await repo.getAll();
+      expect(all.map((b) => b.id), unorderedEquals(['a', 'b']));
+    });
+
+    test('rolls nothing back when the input is clean', () async {
+      await repo.replaceAll([makeBookmark(id: 'old', url: 'https://old.com')]);
+      await repo.replaceAll([makeBookmark(id: 'new', url: 'https://new.com')]);
+
+      final all = await repo.getAll();
+      expect(all.map((b) => b.id), ['new']);
+    });
+  });
+
+  group('SqliteBookmarkRepository sync metadata', () {
+    test('sync token round-trips and clears', () async {
+      expect(await repo.getSyncToken(), isNull);
+      await repo.setSyncToken('"7"');
+      expect(await repo.getSyncToken(), '"7"');
+      await repo.setSyncToken('"8"');
+      expect(await repo.getSyncToken(), '"8"');
+      await repo.setSyncToken(null);
+      expect(await repo.getSyncToken(), isNull);
+    });
+
+    test('last refreshed round-trips', () async {
+      expect(await repo.getLastRefreshed(), isNull);
+      await repo.setLastRefreshed('2026-08-19T12:00:00.000Z');
+      expect(await repo.getLastRefreshed(), '2026-08-19T12:00:00.000Z');
+    });
+
+    test('sync token, last refreshed and delete count are independent', () async {
+      await repo.setSyncToken('"7"');
+      await repo.setLastRefreshed('2026-08-19T12:00:00.000Z');
+      await repo.incrementDeleteCount(3);
+
+      // Clearing one key must not disturb the others
+      await repo.setSyncToken(null);
+      expect(await repo.getLastRefreshed(), '2026-08-19T12:00:00.000Z');
+      expect(await repo.getDeleteCount(), 3);
     });
   });
 }

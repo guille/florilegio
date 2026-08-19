@@ -6,45 +6,11 @@ const TOKEN = "test-token";
 const auth = { Authorization: `Bearer ${TOKEN}` };
 const jsonHeaders = { ...auth, "Content-Type": "application/json" };
 
-/** Apply schema to the test D1 database. */
-async function applySchema() {
-  const db = env.DB;
-  await db.exec(
-    "CREATE TABLE IF NOT EXISTS bookmarks(id TEXT PRIMARY KEY, url TEXT NOT NULL UNIQUE, title TEXT, tags TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
-  );
-  await db.exec(
-    "CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(title, url, content = bookmarks, content_rowid = rowid)",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN INSERT INTO bookmarks_fts(rowid, title, url) VALUES (new.rowid, new.title, new.url); END",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_ad AFTER DELETE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, title, url) VALUES ('delete', old.rowid, old.title, old.url); END",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN INSERT INTO bookmarks_fts(bookmarks_fts, rowid, title, url) VALUES ('delete', old.rowid, old.title, old.url); INSERT INTO bookmarks_fts(rowid, title, url) VALUES (new.rowid, new.title, new.url); END",
-  );
-  // sync_metadata for If-Modified-Since support (including deletes)
-  await db.exec(
-    "CREATE TABLE IF NOT EXISTS sync_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-  );
-  await db.exec(
-    "INSERT OR IGNORE INTO sync_metadata (key, value) VALUES ('last_modified', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS sync_meta_after_insert AFTER INSERT ON bookmarks BEGIN UPDATE sync_metadata SET value = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE key = 'last_modified'; END",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS sync_meta_after_update AFTER UPDATE ON bookmarks BEGIN UPDATE sync_metadata SET value = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE key = 'last_modified'; END",
-  );
-  await db.exec(
-    "CREATE TRIGGER IF NOT EXISTS sync_meta_after_delete AFTER DELETE ON bookmarks BEGIN UPDATE sync_metadata SET value = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE key = 'last_modified'; END",
-  );
-}
+// Schema comes from the real migrations/, applied once in test/apply-migrations.ts.
 
 async function clearBookmarks() {
-  const db = env.DB;
-  await db.exec("DELETE FROM bookmarks");
+  // The FTS and version triggers fire on delete, keeping both consistent
+  await env.DB.exec("DELETE FROM bookmarks");
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,9 +26,69 @@ async function createBookmark(data: Record<string, unknown>) {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Florilegio API", () => {
-  beforeEach(async () => {
-    await applySchema();
-    await clearBookmarks();
+  beforeEach(clearBookmarks);
+
+  // ── Schema ───────────────────────────────────────────────────────────────
+  //
+  // The schema under test comes from migrations/, so these assert the migration
+  // chain actually lands where we think it does.
+
+  it("applied every migration", async () => {
+    const { results } = await env.DB.prepare(
+      "SELECT name FROM d1_migrations ORDER BY name",
+    ).all<{ name: string }>();
+
+    expect(results.map((r) => r.name)).toEqual([
+      "001_create_schema.sql",
+      "002_drop_is_read.sql",
+      "003_sync_metadata.sql",
+      "004_drop_fts_id_column.sql",
+      "005_version_counter.sql",
+      "006_created_at_id_index.sql",
+    ]);
+  });
+
+  it("migrated to the expected final schema", async () => {
+    const { results } = await env.DB.prepare(
+      // Excluded: sqlite internals, D1's own bookkeeping, and the FTS shadow tables
+      "SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'bookmarks_fts_%' AND name != 'd1_migrations' ORDER BY type, name",
+    ).all<{ type: string; name: string }>();
+
+    expect(results).toEqual([
+      { type: "index", name: "idx_bookmarks_created_at" },
+      { type: "table", name: "bookmarks" },
+      { type: "table", name: "bookmarks_fts" },
+      { type: "table", name: "bookmarks_state" },
+      { type: "trigger", name: "bookmarks_ad" },
+      { type: "trigger", name: "bookmarks_ai" },
+      { type: "trigger", name: "bookmarks_au" },
+      { type: "trigger", name: "bookmarks_version_ad" },
+      { type: "trigger", name: "bookmarks_version_ai" },
+      { type: "trigger", name: "bookmarks_version_au" },
+    ]);
+  });
+
+  it("dropped what later migrations remove", async () => {
+    // 002 dropped is_read, 005 replaced sync_metadata with the version counter
+    const cols = await env.DB.prepare("SELECT name FROM pragma_table_info('bookmarks')").all<{
+      name: string;
+    }>();
+    expect(cols.results.map((c) => c.name)).not.toContain("is_read");
+
+    const dropped = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE name IN ('sync_metadata', 'idx_bookmarks_is_read')",
+    ).all();
+    expect(dropped.results).toEqual([]);
+  });
+
+  it("indexes created_at and id so the list ORDER BY needs no sort", async () => {
+    const { results } = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT * FROM bookmarks ORDER BY created_at DESC, id ASC LIMIT 200",
+    ).all<{ detail: string }>();
+
+    const plan = results.map((r) => r.detail).join(" | ");
+    expect(plan).toContain("USING INDEX idx_bookmarks_created_at");
+    expect(plan).not.toContain("TEMP B-TREE");
   });
 
   // ── Auth ─────────────────────────────────────────────────────────────────
@@ -239,6 +265,28 @@ describe("Florilegio API", () => {
     expect(result.errors[0]).toContain("[0]");
   });
 
+  it("import normalizes timestamps and falls back on unparseable ones", async () => {
+    const data = [
+      { id: "ok", url: "https://ok.com", created_at: "2024-03-05T06:07:08Z" },
+      { id: "loose", url: "https://loose.com", created_at: "Tue, 05 Mar 2024 06:07:08 GMT" },
+      { id: "junk", url: "https://junk.com", created_at: "whenever" },
+    ];
+    await exports.default.fetch("http://localhost/bookmarks/import", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(data),
+    });
+
+    const res = await exports.default.fetch("http://localhost/bookmarks/export", { headers: auth });
+    const byId = Object.fromEntries((await res.json<any[]>()).map((b) => [b.id, b]));
+
+    expect(byId.ok.created_at).toBe("2024-03-05T06:07:08.000Z");
+    expect(byId.loose.created_at).toBe("2024-03-05T06:07:08.000Z");
+    // Unparseable falls back to now, same as a missing field
+    expect(Date.parse(byId.junk.created_at)).not.toBeNaN();
+    expect(byId.junk.created_at).not.toBe("whenever");
+  });
+
   it("import rejects non-array body", async () => {
     const res = await exports.default.fetch("http://localhost/bookmarks/import", {
       method: "POST",
@@ -340,6 +388,38 @@ describe("Florilegio API", () => {
     expect(body.length).toBe(2);
   });
 
+  it("treats LIKE metacharacters in ?tag= literally", async () => {
+    await createBookmark({ url: "https://a.com", tags: "dev,rust" });
+    await createBookmark({ url: "https://b.com", tags: "design" });
+    await createBookmark({ url: "https://c.com", tags: "news" });
+
+    for (const tag of ["%", "de_", "d%v", "_ev"]) {
+      const res = await exports.default.fetch(
+        `http://localhost/bookmarks?tag=${encodeURIComponent(tag)}`,
+        { headers: auth },
+      );
+      expect(await res.json<any[]>()).toHaveLength(0);
+      expect(res.headers.get("X-Total-Count")).toBe("0");
+    }
+  });
+
+  it("tag filter is case-insensitive", async () => {
+    await createBookmark({ url: "https://a.com", tags: "DevOps,rust" });
+    const res = await exports.default.fetch("http://localhost/bookmarks?tag=devops", {
+      headers: auth,
+    });
+    expect(await res.json<any[]>()).toHaveLength(1);
+  });
+
+  it("tag filter combined with q treats metacharacters literally", async () => {
+    await createBookmark({ url: "https://hono.dev", title: "Hono framework", tags: "js,web" });
+    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono&tag=%25", {
+      headers: auth,
+    });
+    expect(await res.json<any[]>()).toHaveLength(0);
+    expect(res.headers.get("X-Total-Count")).toBe("0");
+  });
+
   // ── Pagination ───────────────────────────────────────────────────────────
 
   it("returns X-Total-Count header", async () => {
@@ -420,73 +500,129 @@ describe("Florilegio API", () => {
     expect(order1).toEqual(order2);
   });
 
-  // ── Conditional GET (Last-Modified / If-Modified-Since) ─────────────────
+  // ── CORS ─────────────────────────────────────────────────────────────────
 
-  it("returns Last-Modified header on GET /bookmarks", async () => {
-    await createBookmark({ url: "https://a.com" });
-    const res = await exports.default.fetch("http://localhost/bookmarks", { headers: auth });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Last-Modified")).toBeTruthy();
-  });
-
-  it("returns 304 when If-Modified-Since matches Last-Modified", async () => {
-    await createBookmark({ url: "https://a.com" });
-    const res1 = await exports.default.fetch("http://localhost/bookmarks", { headers: auth });
-    const lastModified = res1.headers.get("Last-Modified")!;
-
-    const res2 = await exports.default.fetch("http://localhost/bookmarks", {
-      headers: { ...auth, "If-Modified-Since": lastModified },
-    });
-    expect(res2.status).toBe(304);
-  });
-
-  it("returns 200 when data changed after If-Modified-Since", async () => {
-    await createBookmark({ url: "https://a.com" });
-    // Use a date in the past
+  it("exposes ETag to browser clients", async () => {
+    // ETag is not CORS-safelisted (unlike Last-Modified), so without this the
+    // web build reads null and silently stops sending If-None-Match.
     const res = await exports.default.fetch("http://localhost/bookmarks", {
-      headers: { ...auth, "If-Modified-Since": "Wed, 01 Jan 2020 00:00:00 GMT" },
+      headers: { ...auth, Origin: "https://example.com" },
+    });
+    expect(res.headers.get("Access-Control-Expose-Headers")).toContain("ETag");
+  });
+
+  it("allows If-None-Match through preflight", async () => {
+    const res = await exports.default.fetch("http://localhost/bookmarks", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization,if-none-match",
+      },
+    });
+    expect(res.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toContain(
+      "if-none-match",
+    );
+  });
+
+  // ── Conditional GET (ETag / If-None-Match) ──────────────────────────────
+
+  const listEtag = async (path = "/bookmarks") => {
+    const res = await exports.default.fetch(`http://localhost${path}`, { headers: auth });
+    expect(res.status).toBe(200);
+    return res.headers.get("ETag")!;
+  };
+
+  it("returns an ETag on GET /bookmarks", async () => {
+    await createBookmark({ url: "https://a.com" });
+    expect(await listEtag()).toMatch(/^"\d+"$/);
+  });
+
+  it("returns an ETag even on an empty database", async () => {
+    expect(await listEtag()).toMatch(/^"\d+"$/);
+  });
+
+  it("returns 304 when If-None-Match matches", async () => {
+    await createBookmark({ url: "https://a.com" });
+    const etag = await listEtag();
+
+    const res = await exports.default.fetch("http://localhost/bookmarks", {
+      headers: { ...auth, "If-None-Match": etag },
+    });
+    expect(res.status).toBe(304);
+    // RFC 9110: a 304 still carries the ETag it would have sent with a 200
+    expect(res.headers.get("ETag")).toBe(etag);
+    expect(await res.text()).toBe("");
+  });
+
+  it("returns 200 when If-None-Match is stale", async () => {
+    await createBookmark({ url: "https://a.com" });
+    const res = await exports.default.fetch("http://localhost/bookmarks", {
+      headers: { ...auth, "If-None-Match": '"0"' },
     });
     expect(res.status).toBe(200);
   });
 
-  it("does not return Last-Modified when filters are active", async () => {
-    await createBookmark({ url: "https://a.com", tags: "dev" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?tag=dev", {
-      headers: auth,
-    });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Last-Modified")).toBeNull();
+  it("honours weak comparison, lists, and *", async () => {
+    await createBookmark({ url: "https://a.com" });
+    const etag = await listEtag();
+
+    for (const header of [`W/${etag}`, `"0", ${etag}`, "*"]) {
+      const res = await exports.default.fetch("http://localhost/bookmarks", {
+        headers: { ...auth, "If-None-Match": header },
+      });
+      expect(res.status, `If-None-Match: ${header}`).toBe(304);
+    }
   });
 
-  it("returns Last-Modified header even on empty database", async () => {
-    const res = await exports.default.fetch("http://localhost/bookmarks", { headers: auth });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Last-Modified")).toBeTruthy();
+  it("serves conditional GET for filtered requests too", async () => {
+    await createBookmark({ url: "https://hono.dev", title: "Hono", tags: "dev" });
+
+    for (const path of ["/bookmarks?tag=dev", "/bookmarks?q=hono"]) {
+      const etag = await listEtag(path);
+      const res = await exports.default.fetch(`http://localhost${path}`, {
+        headers: { ...auth, "If-None-Match": etag },
+      });
+      expect(res.status, path).toBe(304);
+    }
   });
 
-  it("Last-Modified updates after a delete", async () => {
-    const createRes = await createBookmark({ url: "https://delete-test.com" });
-    const { id } = (await createRes.json()) as { id: string };
+  it("ETag advances on insert, update and delete", async () => {
+    const created = await createBookmark({ url: "https://a.com" });
+    const { id } = await created.json<{ id: string }>();
+    const afterInsert = await listEtag();
 
-    const beforeDelete = await exports.default.fetch("http://localhost/bookmarks", {
-      headers: auth,
+    await exports.default.fetch(`http://localhost/bookmarks/${id}`, {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify({ title: "New" }),
     });
-    const lmBefore = beforeDelete.headers.get("Last-Modified")!;
-
-    // Small delay to ensure timestamp changes
-    await new Promise((r) => setTimeout(r, 1100));
+    const afterUpdate = await listEtag();
+    expect(afterUpdate).not.toBe(afterInsert);
 
     await exports.default.fetch(`http://localhost/bookmarks/${id}`, {
       method: "DELETE",
       headers: auth,
     });
+    const afterDelete = await listEtag();
+    expect(afterDelete).not.toBe(afterUpdate);
+  });
 
-    const afterDelete = await exports.default.fetch("http://localhost/bookmarks", {
-      headers: auth,
+  // This is the regression the counter exists for: with a second-resolution
+  // Last-Modified, two writes in the same second bracketing a read left the
+  // client revalidating against a validator that never advanced.
+  it("does not lose an update made in the same second as the read", async () => {
+    await createBookmark({ url: "https://first.example" });
+    const etag = await listEtag();
+
+    // No delay: this lands in the same wall-clock second as the read above.
+    await createBookmark({ url: "https://second.example" });
+
+    const res = await exports.default.fetch("http://localhost/bookmarks", {
+      headers: { ...auth, "If-None-Match": etag },
     });
-    const lmAfter = afterDelete.headers.get("Last-Modified")!;
-
-    expect(new Date(lmAfter).getTime()).toBeGreaterThan(new Date(lmBefore).getTime());
+    expect(res.status).toBe(200);
+    expect(await res.json<any[]>()).toHaveLength(2);
   });
 });
 

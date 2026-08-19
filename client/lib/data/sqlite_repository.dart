@@ -87,16 +87,19 @@ class SqliteBookmarkRepository implements BookmarkRepository {
     final where = <String>[];
     final args = <dynamic>[];
 
+    // instr() rather than LIKE: a LIKE pattern would treat % and _ in the
+    // user's search text or tag as wildcards. lower() on both sides preserves
+    // LIKE's ASCII case-insensitivity.
     if (query != null && query.isNotEmpty) {
-      where.add('(title LIKE ? OR url LIKE ?)');
+      where.add('(instr(lower(title), lower(?)) > 0 OR instr(lower(url), lower(?)) > 0)');
       args
-        ..add('%$query%')
-        ..add('%$query%');
+        ..add(query)
+        ..add(query);
     }
 
     if (tag != null) {
-      where.add("',' || tags || ',' LIKE ?");
-      args.add('%,$tag,%');
+      where.add("instr(lower(',' || tags || ','), lower(?)) > 0");
+      args.add(',$tag,');
     }
 
     final orderBy = switch (order) {
@@ -154,7 +157,9 @@ class SqliteBookmarkRepository implements BookmarkRepository {
       await txn.delete('bookmarks');
       final batch = txn.batch();
       for (final b in bookmarks) {
-        batch.insert('bookmarks', b.toRow());
+        // replace, not the default abort: a duplicate id or url anywhere in the
+        // input would otherwise roll back the entire replacement.
+        batch.insert('bookmarks', b.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await batch.commit(noResult: true);
     });
@@ -203,24 +208,34 @@ class SqliteBookmarkRepository implements BookmarkRepository {
 
   // ── Sync metadata ──────────────────────────────────────────────────────
 
-  @override
-  Future<void> setLastModified(String? value) async {
+  Future<void> _setMeta(String key, String? value) async {
     if (value == null) {
-      await _db.delete('sync_metadata', where: "key = 'last_modified'");
+      await _db.delete('sync_metadata', where: 'key = ?', whereArgs: [key]);
     } else {
       await _db.insert('sync_metadata', {
-        'key': 'last_modified',
+        'key': key,
         'value': value,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
-  @override
-  Future<String?> getLastModified() async {
-    final rows = await _db.query('sync_metadata', where: "key = 'last_modified'");
+  Future<String?> _getMeta(String key) async {
+    final rows = await _db.query('sync_metadata', where: 'key = ?', whereArgs: [key]);
     if (rows.isEmpty) return null;
     return rows.first['value'] as String?;
   }
+
+  @override
+  Future<void> setSyncToken(String? value) => _setMeta('sync_token', value);
+
+  @override
+  Future<String?> getSyncToken() => _getMeta('sync_token');
+
+  @override
+  Future<void> setLastRefreshed(String? value) => _setMeta('last_refreshed', value);
+
+  @override
+  Future<String?> getLastRefreshed() => _getMeta('last_refreshed');
 
   // ── Delete counter ─────────────────────────────────────────────────────
 

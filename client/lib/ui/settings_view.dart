@@ -49,8 +49,8 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Future<void> _loadLastRefreshed() async {
-    final lm = await widget.repository?.getLastModified();
-    if (mounted) setState(() => _lastRefreshed = lm);
+    final value = await widget.repository?.getLastRefreshed();
+    if (mounted) setState(() => _lastRefreshed = value);
   }
 
   Future<void> _loadOfflineQueueSize() async {
@@ -162,42 +162,19 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
-  // Used both to parse and to format; index + 1 == month number.
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
-  /// Parse an HTTP date (e.g. "Thu, 01 Jan 2024 00:00:00 GMT") into a
-  /// human-readable local time string. Falls back to the raw value.
-  String _formatHttpDate(String httpDate) {
-    try {
-      // HTTP dates follow RFC 1123: "Thu, 01 Jan 2024 00:00:00 GMT"
-      // Dart's DateTime.parse doesn't handle this format, and dart:io's
-      // HttpDate isn't available on web, so parse manually.
-      final parts = httpDate.split(' ');
-      // "Thu," "01" "Jan" "2024" "00:00:00" "GMT"
-      final day = int.parse(parts[1]);
-      final month = _months.indexOf(parts[2]) + 1;
-      // Guard: DateTime.utc silently normalizes month 0 to last December.
-      if (month == 0) return httpDate;
-      final year = int.parse(parts[3]);
-      final timeParts = parts[4].split(':');
-      final dt = DateTime.utc(
-        year,
-        month,
-        day,
-        int.parse(timeParts[0]),
-        int.parse(timeParts[1]),
-        int.parse(timeParts[2]),
-      ).toLocal();
-
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
-      return '${_months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute';
-    } catch (_) {
-      return httpDate; // fallback to raw value
-    }
+  /// Format an ISO-8601 timestamp as human-readable local time.
+  /// Falls back to the raw value.
+  String _formatTimestamp(String iso) {
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return iso;
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${_months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute';
   }
 
   @override
@@ -282,7 +259,7 @@ class _SettingsViewState extends State<SettingsView> {
             if (_lastRefreshed != null) ...[
               const SizedBox(height: 24),
               Text(
-                'Last refreshed: ${_formatHttpDate(_lastRefreshed!)}',
+                'Last refreshed: ${_formatTimestamp(_lastRefreshed!)}',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),

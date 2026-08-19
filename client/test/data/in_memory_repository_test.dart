@@ -89,6 +89,18 @@ void main() {
       expect(results.first.id, 'a');
     });
 
+    // Same tag semantics as SqliteBookmarkRepository, so tests written against
+    // this fake can't pass while the real repository would disagree.
+    test('getAll tag match is case-insensitive', () async {
+      await repo.upsert(makeBookmark(id: 'a', tags: ['DevOps']));
+      expect((await repo.getAll(tag: 'devops')).map((b) => b.id), ['a']);
+    });
+
+    test('getAll tag match does not match a partial tag', () async {
+      await repo.upsert(makeBookmark(id: 'a', tags: ['devops']));
+      expect(await repo.getAll(tag: 'dev'), isEmpty);
+    });
+
     test('getAll with random order returns all bookmarks', () async {
       for (var i = 0; i < 10; i++) {
         await repo.upsert(makeBookmark(id: '$i', createdAt: DateTime(2024, 1, i + 1)));
