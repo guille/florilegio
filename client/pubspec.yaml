@@ -23,7 +23,7 @@ environment:
 
 dependencies:
   cupertino_icons: ^1.0.8
-  file_picker: ^12.0.0-beta.7
+  file_picker: ^12.0.0
   flutter:
     sdk: flutter
   flutter_secure_storage: ^11.0.0
