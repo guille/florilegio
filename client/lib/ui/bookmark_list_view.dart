@@ -620,6 +620,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                       final bookmark = _bookmarks[index];
                       final card = _BookmarkCard(
                         bookmark: bookmark,
+                        apiClient: widget.syncService.apiClient,
                         selected: _selectedIds.contains(bookmark.id),
                         selectionMode: _selectionMode,
                         onTap: _selectionMode
@@ -722,6 +723,7 @@ class _EmptyState extends StatelessWidget {
 
 class _BookmarkCard extends StatelessWidget {
   final Bookmark bookmark;
+  final BookmarkApiClient apiClient;
   final bool selected;
   final bool selectionMode;
   final VoidCallback onTap;
@@ -733,6 +735,7 @@ class _BookmarkCard extends StatelessWidget {
 
   const _BookmarkCard({
     required this.bookmark,
+    required this.apiClient,
     this.selected = false,
     this.selectionMode = false,
     required this.onTap,
@@ -745,7 +748,7 @@ class _BookmarkCard extends StatelessWidget {
 
   String get _faviconUrl {
     final host = Uri.tryParse(bookmark.url)?.host ?? '';
-    return 'https://icons.duckduckgo.com/ip3/$host.ico';
+    return apiClient.faviconUrl(host);
   }
 
   String _timeAgo(DateTime dt) {
@@ -785,20 +788,18 @@ class _BookmarkCard extends StatelessWidget {
                         color: selected ? theme.colorScheme.primary : theme.colorScheme.outline,
                       ),
                     ),
-                  // Favicon (skipped on web due to CORS)
                   Padding(
                     padding: const EdgeInsets.only(right: 10, top: 2),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: kIsWeb
-                          ? Icon(Icons.language, size: 20, color: theme.colorScheme.outline)
-                          : Image.network(
-                              _faviconUrl,
-                              width: 20,
-                              height: 20,
-                              errorBuilder: (_, e, st) =>
-                                  Icon(Icons.language, size: 20, color: theme.colorScheme.outline),
-                            ),
+                      child: Image.network(
+                        _faviconUrl,
+                        width: 20,
+                        height: 20,
+                        headers: apiClient.faviconHeaders,
+                        errorBuilder: (_, e, st) =>
+                            Icon(Icons.language, size: 20, color: theme.colorScheme.outline),
+                      ),
                     ),
                   ),
                   Expanded(

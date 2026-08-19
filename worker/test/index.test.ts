@@ -1,5 +1,5 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../src/index";
 
 const TOKEN = "test-token";
@@ -487,5 +487,73 @@ describe("Florilegio API", () => {
     const lmAfter = afterDelete.headers.get("Last-Modified")!;
 
     expect(new Date(lmAfter).getTime()).toBeGreaterThan(new Date(lmBefore).getTime());
+  });
+});
+
+describe("Favicon proxy", () => {
+  // Tests share the worker's isolate, so stubbing global fetch intercepts the
+  // route's upstream call. Binding calls (exports.default.fetch, D1) bypass it.
+  // Takes a factory: the Response must be created inside the handler's request
+  // context, or workerd rejects reading its body from "a different request".
+  function stubUpstream(makeResponse: () => Response) {
+    const stub = vi.fn(async () => makeResponse());
+    vi.stubGlobal("fetch", stub);
+    return stub;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("rejects requests without auth", async () => {
+    const res = await exports.default.fetch("http://localhost/favicon/github.com");
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects invalid hostnames", async () => {
+    for (const host of ["not a host", "-leading.dash", "trailing.dash-", "a..b"]) {
+      const res = await exports.default.fetch(
+        `http://localhost/favicon/${encodeURIComponent(host)}`,
+        { headers: auth },
+      );
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("rejects encoded path traversal", async () => {
+    // Bare %2e%2e is a dot segment: URL parsing collapses it before routing.
+    // Embedded in a longer segment it survives, and the router decodes it to
+    // ../etc before the hostname check sees it.
+    const res = await exports.default.fetch("http://localhost/favicon/%2e%2e%2fetc", {
+      headers: auth,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("proxies the upstream icon", async () => {
+    const stub = stubUpstream(
+      () => new Response("icon-bytes", { headers: { "Content-Type": "image/png" } }),
+    );
+
+    const res = await exports.default.fetch("http://localhost/favicon/GitHub.com", {
+      headers: auth,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(res.headers.get("Cache-Control")).toContain("max-age");
+    // arrayBuffer, not text(): workerd warns about .text() on an image body
+    expect(new TextDecoder().decode(await res.arrayBuffer())).toBe("icon-bytes");
+    // Host is lowercased before hitting the upstream
+    expect(stub).toHaveBeenCalledWith(
+      expect.stringContaining("url=https://github.com&"),
+      expect.anything(),
+    );
+  });
+
+  it("maps upstream failure to 404", async () => {
+    stubUpstream(() => new Response("bad gateway", { status: 502 }));
+
+    const res = await exports.default.fetch("http://localhost/favicon/unknown.example", {
+      headers: auth,
+    });
+    expect(res.status).toBe(404);
   });
 });

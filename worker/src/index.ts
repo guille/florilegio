@@ -31,6 +31,8 @@ app.use(
     allowHeaders: ["Authorization", "Content-Type"],
     // Not CORS-safelisted, so browsers hide it unless exposed explicitly
     exposeHeaders: ["X-Total-Count"],
+    // Cache preflights; favicon loads trigger one per icon URL otherwise
+    maxAge: 86400,
   }),
 );
 
@@ -290,6 +292,41 @@ app.delete("/bookmarks/:id", async (c) => {
   if (!meta.changes) throw new HTTPException(404, { message: "Bookmark not found" });
 
   return c.body(null, 204);
+});
+
+// ── Favicon  GET /favicon/:host ────────────────────────────────────────────────
+//
+//   Proxies Google's favicon service: it sends no CORS headers, so browser
+//   clients can't fetch it directly. Bearer auth (like every other route)
+//   keeps this from being an open favicon proxy.
+//
+//   Google over DuckDuckGo because it always serves PNG: Flutter web's decoder
+//   can't handle the ICO files DDG passes through unconverted.
+
+const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+app.get("/favicon/:host", async (c) => {
+  const host = c.req.param("host").toLowerCase();
+  if (host.length > 253 || !HOSTNAME_RE.test(host)) {
+    throw new HTTPException(400, { message: "Invalid host" });
+  }
+
+  const upstream = await fetch(
+    `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${host}&size=64`,
+    { cf: { cacheEverything: true, cacheTtl: 604800 } },
+  );
+  if (!upstream.ok || !upstream.body) {
+    // Unconsumed bodies pin the connection until GC
+    await upstream.body?.cancel();
+    throw new HTTPException(404, { message: "No favicon" });
+  }
+
+  return c.body(upstream.body, 200, {
+    "Content-Type": upstream.headers.get("Content-Type") ?? "image/x-icon",
+    // Icons rarely change and staleness is harmless; let browsers cache hard.
+    // private: the request carries Authorization, keep shared caches out.
+    "Cache-Control": "private, max-age=604800",
+  });
 });
 
 // ── Error handling ─────────────────────────────────────────────────────────────

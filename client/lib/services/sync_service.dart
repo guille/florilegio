@@ -59,6 +59,9 @@ class SyncService {
 
   SyncService({required this._repository, required this._apiClient, this._titleFetcher});
 
+  /// Exposed for UI needs that hit the API directly (e.g. favicon URLs).
+  BookmarkApiClient get apiClient => _apiClient;
+
   /// Full sync: flush pending queue, then fetch all remote bookmarks and replace local data.
   /// When [force] is true (user-initiated refresh), skips If-Modified-Since.
   Future<SyncResult> sync({bool force = false}) async {

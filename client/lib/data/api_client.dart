@@ -56,6 +56,13 @@ class BookmarkApiClient {
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse('$baseUrl$path').replace(queryParameters: query);
 
+  /// URL of the server-side favicon proxy for [host].
+  /// Image requests must send [faviconHeaders].
+  String faviconUrl(String host) => '$baseUrl/favicon/$host';
+
+  /// Auth-only headers for favicon image requests.
+  Map<String, String> get faviconHeaders => {'Authorization': 'Bearer $token'};
+
   /// Wraps requests with a timeout and a user-friendly error message.
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
