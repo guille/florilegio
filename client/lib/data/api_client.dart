@@ -75,15 +75,11 @@ class BookmarkApiClient {
   /// Fetch a single page. Returns (bookmarks, totalCount, etag) or null if the
   /// server returned 304 Not Modified.
   Future<(List<Bookmark>, int, String?)?> _listPage({
-    String? tag,
-    String? query,
     int limit = 200,
     int offset = 0,
     String? ifNoneMatch,
   }) async {
     final params = <String, String>{'limit': limit.toString(), 'offset': offset.toString()};
-    if (tag != null) params['tag'] = tag;
-    if (query != null) params['q'] = query;
 
     final headers = Map<String, String>.from(_headers);
     if (ifNoneMatch != null) headers['If-None-Match'] = ifNoneMatch;
@@ -99,15 +95,10 @@ class BookmarkApiClient {
     return (bookmarks, total, response.headers['etag']);
   }
 
-  /// Fetch the whole unfiltered collection, paginating until exhausted.
+  /// Fetch the whole collection, paginating until exhausted.
   /// If [ifNoneMatch] is provided and the server returns 304, returns null
   /// (meaning "no changes"). Otherwise returns the full list and the validator
   /// to send next time, which is null when the snapshot cannot be trusted.
-  ///
-  /// Deliberately takes no tag/query: the server's validator is a global
-  /// version, so a token obtained from a filtered list would wrongly satisfy an
-  /// unfiltered request (and vice versa). Keeping this method unfiltered makes
-  /// that mismatch impossible rather than merely discouraged.
   Future<({List<Bookmark> bookmarks, String? syncToken})?> listAll({
     String? ifNoneMatch,
   }) async {
@@ -148,13 +139,6 @@ class BookmarkApiClient {
     final deduped = all.where((b) => seen.add(b.id)).toList();
 
     return (bookmarks: deduped, syncToken: torn ? null : firstEtag);
-  }
-
-  /// Fetch a single page of bookmarks (for UI display with pagination).
-  Future<List<Bookmark>> list({String? tag, String? query}) async {
-    final result = await _listPage(tag: tag, query: query);
-    final (bookmarks, _, _) = result!;
-    return bookmarks;
   }
 
   Future<Bookmark> create(String url, {String? title}) async {

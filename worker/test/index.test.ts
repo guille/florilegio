@@ -9,7 +9,7 @@ const jsonHeaders = { ...auth, "Content-Type": "application/json" };
 // Schema comes from the real migrations/, applied once in test/apply-migrations.ts.
 
 async function clearBookmarks() {
-  // The FTS and version triggers fire on delete, keeping both consistent
+  // The version triggers fire on delete, keeping the counter consistent
   await env.DB.exec("DELETE FROM bookmarks");
 }
 
@@ -34,9 +34,9 @@ describe("Florilegio API", () => {
   // chain actually lands where we think it does.
 
   it("applied every migration", async () => {
-    const { results } = await env.DB.prepare(
-      "SELECT name FROM d1_migrations ORDER BY name",
-    ).all<{ name: string }>();
+    const { results } = await env.DB.prepare("SELECT name FROM d1_migrations ORDER BY name").all<{
+      name: string;
+    }>();
 
     expect(results.map((r) => r.name)).toEqual([
       "001_create_schema.sql",
@@ -45,23 +45,20 @@ describe("Florilegio API", () => {
       "004_drop_fts_id_column.sql",
       "005_version_counter.sql",
       "006_created_at_id_index.sql",
+      "007_drop_fts.sql",
     ]);
   });
 
   it("migrated to the expected final schema", async () => {
     const { results } = await env.DB.prepare(
-      // Excluded: sqlite internals, D1's own bookkeeping, and the FTS shadow tables
-      "SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'bookmarks_fts_%' AND name != 'd1_migrations' ORDER BY type, name",
+      // Excluded: sqlite internals and D1's own bookkeeping
+      "SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' ORDER BY type, name",
     ).all<{ type: string; name: string }>();
 
     expect(results).toEqual([
       { type: "index", name: "idx_bookmarks_created_at" },
       { type: "table", name: "bookmarks" },
-      { type: "table", name: "bookmarks_fts" },
       { type: "table", name: "bookmarks_state" },
-      { type: "trigger", name: "bookmarks_ad" },
-      { type: "trigger", name: "bookmarks_ai" },
-      { type: "trigger", name: "bookmarks_au" },
       { type: "trigger", name: "bookmarks_version_ad" },
       { type: "trigger", name: "bookmarks_version_ai" },
       { type: "trigger", name: "bookmarks_version_au" },
@@ -69,14 +66,15 @@ describe("Florilegio API", () => {
   });
 
   it("dropped what later migrations remove", async () => {
-    // 002 dropped is_read, 005 replaced sync_metadata with the version counter
+    // 002 dropped is_read, 005 replaced sync_metadata with the version
+    // counter, 007 dropped FTS (including its shadow tables)
     const cols = await env.DB.prepare("SELECT name FROM pragma_table_info('bookmarks')").all<{
       name: string;
     }>();
     expect(cols.results.map((c) => c.name)).not.toContain("is_read");
 
     const dropped = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE name IN ('sync_metadata', 'idx_bookmarks_is_read')",
+      "SELECT name FROM sqlite_master WHERE name IN ('sync_metadata', 'idx_bookmarks_is_read', 'bookmarks_fts') OR name LIKE 'bookmarks_fts_%'",
     ).all();
     expect(dropped.results).toEqual([]);
   });
@@ -338,89 +336,19 @@ describe("Florilegio API", () => {
     expect(sortById(reExported)).toEqual(sortById(exported));
   });
 
-  // ── FTS ──────────────────────────────────────────────────────────────────
-
-  it("searches bookmarks via FTS", async () => {
-    await createBookmark({ url: "https://hono.dev", title: "Hono framework" });
-    await createBookmark({ url: "https://react.dev", title: "React docs" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono", { headers: auth });
-    const body = await res.json<any[]>();
-    expect(body.length).toBe(1);
-    expect(body[0].title).toBe("Hono framework");
-  });
-
-  it("finds imported bookmarks via FTS", async () => {
-    const importRes = await exports.default.fetch("http://localhost/bookmarks/import", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify([{ url: "https://hono.dev", title: "Hono framework" }]),
-    });
-    expect(importRes.status).toBe(200);
-    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono", { headers: auth });
-    const body = await res.json<any[]>();
-    expect(body.length).toBe(1);
-    expect(body[0].title).toBe("Hono framework");
-  });
-
-  it("combines FTS search with tag filter", async () => {
-    await createBookmark({ url: "https://hono.dev", title: "Hono framework", tags: "js,web" });
-    await createBookmark({ url: "https://hono.dev/docs", title: "Hono docs", tags: "docs" });
-    await createBookmark({ url: "https://react.dev", title: "React docs", tags: "js,web" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono&tag=js", {
-      headers: auth,
-    });
-    const body = await res.json<any[]>();
-    expect(body.length).toBe(1);
-    expect(body[0].url).toBe("https://hono.dev/");
-    expect(res.headers.get("X-Total-Count")).toBe("1");
-  });
-
-  // ── Tag filter ───────────────────────────────────────────────────────────
-
-  it("filters by tag", async () => {
-    await createBookmark({ url: "https://a.com", tags: "dev,rust" });
-    await createBookmark({ url: "https://b.com", tags: "dev,js" });
-    await createBookmark({ url: "https://c.com", tags: "design" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?tag=dev", {
-      headers: auth,
-    });
-    const body = await res.json<any[]>();
-    expect(body.length).toBe(2);
-  });
-
-  it("treats LIKE metacharacters in ?tag= literally", async () => {
-    await createBookmark({ url: "https://a.com", tags: "dev,rust" });
-    await createBookmark({ url: "https://b.com", tags: "design" });
-    await createBookmark({ url: "https://c.com", tags: "news" });
-
-    for (const tag of ["%", "de_", "d%v", "_ev"]) {
-      const res = await exports.default.fetch(
-        `http://localhost/bookmarks?tag=${encodeURIComponent(tag)}`,
-        { headers: auth },
-      );
-      expect(await res.json<any[]>()).toHaveLength(0);
-      expect(res.headers.get("X-Total-Count")).toBe("0");
-    }
-  });
-
-  it("tag filter is case-insensitive", async () => {
-    await createBookmark({ url: "https://a.com", tags: "DevOps,rust" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?tag=devops", {
-      headers: auth,
-    });
-    expect(await res.json<any[]>()).toHaveLength(1);
-  });
-
-  it("tag filter combined with q treats metacharacters literally", async () => {
-    await createBookmark({ url: "https://hono.dev", title: "Hono framework", tags: "js,web" });
-    const res = await exports.default.fetch("http://localhost/bookmarks?q=hono&tag=%25", {
-      headers: auth,
-    });
-    expect(await res.json<any[]>()).toHaveLength(0);
-    expect(res.headers.get("X-Total-Count")).toBe("0");
-  });
-
   // ── Pagination ───────────────────────────────────────────────────────────
+
+  it("ignores unknown query params", async () => {
+    // ?tag= and ?q= were removed (clients filter locally); old URLs carrying
+    // them must still work rather than error.
+    await createBookmark({ url: "https://a.com", tags: "dev" });
+    await createBookmark({ url: "https://b.com", tags: "design" });
+    const res = await exports.default.fetch("http://localhost/bookmarks?tag=dev&q=hono", {
+      headers: auth,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json<any[]>()).toHaveLength(2);
+  });
 
   it("returns X-Total-Count header", async () => {
     await createBookmark({ url: "https://a.com" });
@@ -572,18 +500,6 @@ describe("Florilegio API", () => {
         headers: { ...auth, "If-None-Match": header },
       });
       expect(res.status, `If-None-Match: ${header}`).toBe(304);
-    }
-  });
-
-  it("serves conditional GET for filtered requests too", async () => {
-    await createBookmark({ url: "https://hono.dev", title: "Hono", tags: "dev" });
-
-    for (const path of ["/bookmarks?tag=dev", "/bookmarks?q=hono"]) {
-      const etag = await listEtag(path);
-      const res = await exports.default.fetch(`http://localhost${path}`, {
-        headers: { ...auth, "If-None-Match": etag },
-      });
-      expect(res.status, path).toBe(304);
     }
   });
 

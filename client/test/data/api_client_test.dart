@@ -20,8 +20,8 @@ void main() {
   };
 
   group('BookmarkApiClient', () {
-    group('list', () {
-      test('sends GET with auth header', () async {
+    group('listAll', () {
+      test('sends GET with auth header and pagination params', () async {
         late http.Request captured;
         final client = http_testing.MockClient((request) async {
           captured = request;
@@ -29,23 +29,12 @@ void main() {
         });
         final api = makeApi(client);
 
-        await api.list();
+        await api.listAll();
         expect(captured.method, 'GET');
         expect(captured.url.path, '/bookmarks');
         expect(captured.headers['Authorization'], 'Bearer test-token');
-      });
-
-      test('passes query params', () async {
-        late Uri captured;
-        final client = http_testing.MockClient((request) async {
-          captured = request.url;
-          return http.Response(jsonEncode([]), 200);
-        });
-        final api = makeApi(client);
-
-        await api.list(tag: 'dev', query: 'flutter');
-        expect(captured.queryParameters['tag'], 'dev');
-        expect(captured.queryParameters['q'], 'flutter');
+        expect(captured.url.queryParameters['limit'], '200');
+        expect(captured.url.queryParameters['offset'], '0');
       });
 
       test('throws ApiException on non-200', () async {
@@ -54,7 +43,19 @@ void main() {
         );
         final api = makeApi(client);
 
-        expect(api.list, throwsA(isA<ApiException>()));
+        expect(api.listAll, throwsA(isA<ApiException>()));
+      });
+
+      test('returns null on 304', () async {
+        late http.Request captured;
+        final client = http_testing.MockClient((request) async {
+          captured = request;
+          return http.Response('', 304);
+        });
+        final api = makeApi(client);
+
+        expect(await api.listAll(ifNoneMatch: '"7"'), isNull);
+        expect(captured.headers['If-None-Match'], '"7"');
       });
 
       test('parses bookmarks correctly', () async {
@@ -63,10 +64,10 @@ void main() {
         );
         final api = makeApi(client);
 
-        final bookmarks = await api.list();
-        expect(bookmarks.length, 1);
-        expect(bookmarks.first.id, '1');
-        expect(bookmarks.first.tags, ['dev']);
+        final result = await api.listAll();
+        expect(result!.bookmarks.length, 1);
+        expect(result.bookmarks.first.id, '1');
+        expect(result.bookmarks.first.tags, ['dev']);
       });
     });
 

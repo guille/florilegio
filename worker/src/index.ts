@@ -48,63 +48,31 @@ app.use("*", async (c, next) => {
 
 // ── List  GET /bookmarks ───────────────────────────────────────────────────────
 //
-//   ?tag=devops           bookmark carries that exact tag (case-insensitive)
-//   ?q=hono               full-text search across title + url
 //   ?limit=50&offset=0    pagination
 //
-//   q and tag compose when both are given.
+//   No server-side filtering: clients sync the full collection and filter
+//   locally. Unknown query params are ignored.
 
 app.get("/bookmarks", async (c) => {
-  const { tag, q, limit: rawLimit, offset: rawOffset } = c.req.query();
+  const { limit: rawLimit, offset: rawOffset } = c.req.query();
   const limit = clampInt(rawLimit, 200, 1, 500);
   const offset = clampInt(rawOffset, 0, 0, Infinity);
 
   // ── Conditional GET ──────────────────────────────────────────────────────
   // The version counter is a valid strong validator for any list URL: for a
   // fixed URL, an unchanged version means an identical result set in an
-  // identical order, so filtered requests get this too.
+  // identical order.
   const etag = `"${await getVersion(c.env.DB)}"`;
   c.header("ETag", etag);
   // A 304 must still carry the ETag it would have sent with a 200.
   if (matchesEtag(c.req.header("If-None-Match"), etag)) return c.body(null, 304);
 
-  // Use FTS when there's a search term, plain table otherwise.
-  if (q) {
-    const match = '"' + q.replace(/"/g, '""') + '"*';
-    const tagClause = tag ? ` AND ${TAG_MATCH("b.tags")}` : "";
-    const filterParams = tag ? [match, tagNeedle(tag)] : [match];
-
-    // Count (for the pagination header) and page in one round trip
-    const [count, page] = await c.env.DB.batch([
-      c.env.DB.prepare(
-        `SELECT COUNT(*) as total
-             FROM bookmarks b
-             JOIN bookmarks_fts f ON b.rowid = f.rowid
-            WHERE bookmarks_fts MATCH ?${tagClause}`,
-      ).bind(...filterParams),
-      c.env.DB.prepare(
-        `SELECT b.*
-             FROM bookmarks b
-             JOIN bookmarks_fts f ON b.rowid = f.rowid
-            WHERE bookmarks_fts MATCH ?${tagClause}
-            ORDER BY b.created_at DESC, b.id ASC
-            LIMIT ? OFFSET ?`,
-      ).bind(...filterParams, limit, offset),
-    ]);
-
-    c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
-    return c.json(page.results as Bookmark[]);
-  }
-
-  const where = tag ? ` WHERE ${TAG_MATCH("tags")}` : "";
-  const whereParams = tag ? [tagNeedle(tag)] : [];
-
   // Deterministic ordering: created_at DESC, then id ASC as tiebreaker
   const [count, page] = await c.env.DB.batch([
-    c.env.DB.prepare(`SELECT COUNT(*) as total FROM bookmarks${where}`).bind(...whereParams),
+    c.env.DB.prepare("SELECT COUNT(*) as total FROM bookmarks"),
     c.env.DB.prepare(
-      `SELECT * FROM bookmarks${where} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`,
-    ).bind(...whereParams, limit, offset),
+      "SELECT * FROM bookmarks ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?",
+    ).bind(limit, offset),
   ]);
 
   c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
@@ -341,16 +309,6 @@ app.onError((err, c) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-/** Match one whole tag inside the comma-separated `tags` column.
- *
- *  instr() rather than LIKE: a LIKE pattern would treat % and _ in the
- *  caller-supplied tag as wildcards, so ?tag=%25 matched every tagged row.
- *  lower() on both sides keeps LIKE's ASCII case-insensitivity. NULL tags
- *  concatenate to NULL and are correctly excluded either way. */
-const TAG_MATCH = (col: string) => `instr(lower(',' || ${col} || ','), lower(?)) > 0`;
-
-const tagNeedle = (tag: string) => `,${tag},`;
 
 /** Normalize a caller-supplied timestamp to ISO-8601, or null if unusable.
  *  created_at is sorted lexicographically, so an arbitrary string would order
