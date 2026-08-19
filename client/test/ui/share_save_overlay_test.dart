@@ -4,10 +4,10 @@ import 'package:florilegio/data/api_client.dart';
 import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/share_save_overlay.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   late InMemoryBookmarkRepository repo;

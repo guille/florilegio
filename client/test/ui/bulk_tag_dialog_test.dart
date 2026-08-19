@@ -1,6 +1,6 @@
 import 'package:florilegio/ui/bulk_tag_dialog.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   Widget buildApp({

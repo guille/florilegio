@@ -1,7 +1,6 @@
 import 'package:florilegio/services/sync_service.dart';
-
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Minimal overlay shown when a URL is shared into the app.
 /// Shows "Saving..." → "Saved!" → returns to the previous app.
