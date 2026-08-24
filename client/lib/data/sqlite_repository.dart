@@ -138,15 +138,6 @@ class SqliteBookmarkRepository implements BookmarkRepository {
   }
 
   @override
-  Future<void> upsertAll(List<Bookmark> bookmarks) async {
-    final batch = _db.batch();
-    for (final b in bookmarks) {
-      batch.insert('bookmarks', b.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-    await batch.commit(noResult: true);
-  }
-
-  @override
   Future<void> delete(String id) async {
     await _db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
   }
@@ -176,7 +167,7 @@ class SqliteBookmarkRepository implements BookmarkRepository {
   Future<void> addPending(String url) async {
     await _db.insert('pending_bookmarks', {
       'url': url,
-      'created_at': DateTime.now().toIso8601String(),
+      'created_at': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
@@ -241,7 +232,7 @@ class SqliteBookmarkRepository implements BookmarkRepository {
 
   @override
   Future<int> getDeleteCount() async {
-    final rows = await _db.query('sync_metadata', where: "key = 'delete_count'");
+    final rows = await _db.query('sync_metadata', where: 'key = ?', whereArgs: ['delete_count']);
     if (rows.isEmpty) return 0;
     return int.tryParse(rows.first['value'] as String? ?? '') ?? 0;
   }
@@ -262,7 +253,7 @@ class SqliteBookmarkRepository implements BookmarkRepository {
 
   @override
   Future<void> resetDeleteCount() async {
-    await _db.delete('sync_metadata', where: "key = 'delete_count'");
+    await _db.delete('sync_metadata', where: 'key = ?', whereArgs: ['delete_count']);
   }
 
   Future<void> close() => _db.close();

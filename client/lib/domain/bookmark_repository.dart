@@ -21,8 +21,6 @@ abstract class BookmarkRepository {
 
   Future<void> upsert(Bookmark bookmark);
 
-  Future<void> upsertAll(List<Bookmark> bookmarks);
-
   Future<void> delete(String id);
 
   /// Replace all local data with the given list (full sync).

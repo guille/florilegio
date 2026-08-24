@@ -67,13 +67,6 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
   }
 
   @override
-  Future<void> upsertAll(List<Bookmark> bookmarks) async {
-    for (final b in bookmarks) {
-      await upsert(b);
-    }
-  }
-
-  @override
   Future<void> delete(String id) async {
     _bookmarks.removeWhere((b) => b.id == id);
   }
