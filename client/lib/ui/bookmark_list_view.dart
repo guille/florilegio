@@ -583,23 +583,23 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 600),
-                        child: SizedBox(
-                          height: 48,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          // A horizontal ListView would force a tight height on
+                          // the chips, clipping them off-centre.
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 6,
                             children: [
                               for (final tag in _allTags.toList()..sort())
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: FilterChip(
-                                    label: Text(tag),
-                                    selected: _selectedTag == tag,
-                                    onSelected: (selected) {
-                                      setState(() => _selectedTag = selected ? tag : null);
-                                      _loadBookmarks();
-                                    },
-                                  ),
+                                FilterChip(
+                                  label: Text(tag),
+                                  selected: _selectedTag == tag,
+                                  onSelected: (selected) {
+                                    setState(() => _selectedTag = selected ? tag : null);
+                                    _loadBookmarks();
+                                  },
                                 ),
                             ],
                           ),

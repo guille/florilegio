@@ -10,6 +10,7 @@ import 'package:florilegio/ui/bookmark_list_view.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:florilegio/ui/share_save_overlay.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -123,6 +124,20 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
       fontFamilyFallback: ["Atkinson Hyperlegible Next"],
     ),
     themeMode: widget.settings.themeMode,
+    // AppBar's default overlay style omits the navigation bar fields, and the
+    // engine skips every nav bar call when they're null, so without this the
+    // bar keeps an unclaimed platform default that follows no theme at all.
+    // Under the mandatory edge-to-edge of targetSdk 36, colour is a no-op;
+    // dropping the contrast scrim is what lets the bar blend into the app.
+    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        systemNavigationBarIconBrightness: Theme.of(context).brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: child!,
+    ),
     home: _pendingShareUrl != null && _syncService != null
         ? ShareSaveOverlay(
             url: _pendingShareUrl!,
