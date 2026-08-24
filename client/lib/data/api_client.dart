@@ -99,9 +99,7 @@ class BookmarkApiClient {
   /// If [ifNoneMatch] is provided and the server returns 304, returns null
   /// (meaning "no changes"). Otherwise returns the full list and the validator
   /// to send next time, which is null when the snapshot cannot be trusted.
-  Future<({List<Bookmark> bookmarks, String? syncToken})?> listAll({
-    String? ifNoneMatch,
-  }) async {
+  Future<({List<Bookmark> bookmarks, String? syncToken})?> listAll({String? ifNoneMatch}) async {
     const pageSize = 200;
     final all = <Bookmark>[];
     var offset = 0;

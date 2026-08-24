@@ -51,6 +51,9 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
   }
 
   @override
+  Future<Set<String>> getAllTags() async => {for (final b in _bookmarks) ...b.tags};
+
+  @override
   Future<Bookmark?> getById(String id) async {
     try {
       return _bookmarks.firstWhere((b) => b.id == id);

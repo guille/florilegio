@@ -64,16 +64,9 @@ class _BookmarkListViewState extends State<BookmarkListView> {
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
-  /// All unique tags across bookmarks, for the filter chips.
+  /// All tags in the library, for the filter chips and editor suggestions.
+  /// Computed from the full collection, not the filtered view.
   Set<String> _allTags = {};
-
-  void _updateAllTags() {
-    final tags = <String>{};
-    for (final b in _bookmarks) {
-      tags.addAll(b.tags);
-    }
-    _allTags = tags;
-  }
 
   @override
   void initState() {
@@ -175,13 +168,24 @@ class _BookmarkListViewState extends State<BookmarkListView> {
       tag: _selectedTag,
       order: _sortOrder,
     );
+    final allTags = await widget.repository.getAllTags();
     if (mounted && generation == _loadGeneration) {
       setState(() {
         _bookmarks = bookmarks;
-        _updateAllTags();
+        _allTags = allTags;
         _loading = false;
       });
     }
+  }
+
+  void _clearFilters() {
+    _searchDebounce?.cancel();
+    setState(() {
+      _showSearch = false;
+      _query = '';
+      _selectedTag = null;
+    });
+    _loadBookmarks();
   }
 
   Future<void> _sync({bool force = false}) async {
@@ -249,10 +253,11 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   Future<void> _deleteBookmark(Bookmark bookmark) async {
     try {
       await widget.syncService.deleteBookmark(bookmark.id);
+      final allTags = await widget.repository.getAllTags();
       if (!mounted) return;
       setState(() {
         _bookmarks.removeWhere((b) => b.id == bookmark.id);
-        _updateAllTags();
+        _allTags = allTags;
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bookmark deleted')));
     } catch (e) {
@@ -578,7 +583,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                     ),
                   ),
                 // Tag filter chips
-                if (_allTags.isNotEmpty && !_loading)
+                if ((_allTags.isNotEmpty || _selectedTag != null) && !_loading)
                   SliverToBoxAdapter(
                     child: Center(
                       child: ConstrainedBox(
@@ -592,7 +597,9 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                             mainAxisSize: MainAxisSize.min,
                             spacing: 6,
                             children: [
-                              for (final tag in _allTags.toList()..sort())
+                              // Keep the selected chip visible even when its
+                              // last bookmark is gone, so it can be deselected.
+                              for (final tag in {..._allTags, ?_selectedTag}.toList()..sort())
                                 FilterChip(
                                   label: Text(tag),
                                   selected: _selectedTag == tag,
@@ -612,7 +619,10 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                   const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
                 else if (_bookmarks.isEmpty)
                   SliverFillRemaining(
-                    child: _EmptyState(hasFilters: _query.isNotEmpty || _selectedTag != null),
+                    child: _EmptyState(
+                      hasFilters: _query.isNotEmpty || _selectedTag != null,
+                      onClearFilters: _clearFilters,
+                    ),
                   )
                 else
                   SliverList(
@@ -685,7 +695,8 @@ class _BookmarkListViewState extends State<BookmarkListView> {
 
 class _EmptyState extends StatelessWidget {
   final bool hasFilters;
-  const _EmptyState({required this.hasFilters});
+  final VoidCallback onClearFilters;
+  const _EmptyState({required this.hasFilters, required this.onClearFilters});
 
   @override
   Widget build(BuildContext context) {
@@ -714,6 +725,10 @@ class _EmptyState extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
               textAlign: TextAlign.center,
             ),
+            if (hasFilters) ...[
+              const SizedBox(height: 16),
+              TextButton(onPressed: onClearFilters, child: const Text('Clear filters')),
+            ],
           ],
         ),
       ),

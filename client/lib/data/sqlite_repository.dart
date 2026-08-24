@@ -126,6 +126,20 @@ class SqliteBookmarkRepository implements BookmarkRepository {
   }
 
   @override
+  Future<Set<String>> getAllTags() async {
+    final rows = await _db.query(
+      'bookmarks',
+      columns: ['tags'],
+      where: "tags IS NOT NULL AND tags <> ''",
+    );
+    return {
+      for (final r in rows)
+        for (final t in (r['tags']! as String).split(','))
+          if (t.trim().isNotEmpty) t.trim(),
+    };
+  }
+
+  @override
   Future<Bookmark?> getById(String id) async {
     final rows = await _db.query('bookmarks', where: 'id = ?', whereArgs: [id]);
     if (rows.isEmpty) return null;

@@ -101,6 +101,13 @@ void main() {
       expect(await repo.getAll(tag: 'dev'), isEmpty);
     });
 
+    test('getAllTags returns distinct tags across all bookmarks', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', tags: ['dev', 'read']));
+      await repo.upsert(makeBookmark(id: 'b', url: 'https://b.com', tags: ['dev']));
+      await repo.upsert(makeBookmark(id: 'c', url: 'https://c.com'));
+      expect(await repo.getAllTags(), {'dev', 'read'});
+    });
+
     test('getAll with random order returns all bookmarks', () async {
       for (var i = 0; i < 10; i++) {
         await repo.upsert(makeBookmark(id: '$i', createdAt: DateTime(2024, 1, i + 1)));

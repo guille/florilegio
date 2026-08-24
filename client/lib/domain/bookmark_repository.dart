@@ -19,6 +19,9 @@ abstract class BookmarkRepository {
 
   Future<Bookmark?> getById(String id);
 
+  /// All distinct tags across the whole collection, ignoring any filters.
+  Future<Set<String>> getAllTags();
+
   Future<void> upsert(Bookmark bookmark);
 
   Future<void> delete(String id);

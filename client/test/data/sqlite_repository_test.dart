@@ -143,6 +143,18 @@ void main() {
       expect(await repo.getAll(tag: 'dev'), isEmpty);
     });
 
+    test('getAllTags returns distinct tags across all bookmarks', () async {
+      await repo.upsert(makeBookmark(id: 'a', url: 'https://a.com', tags: ['dev', 'read']));
+      await repo.upsert(makeBookmark(id: 'b', url: 'https://b.com', tags: ['dev']));
+      await repo.upsert(makeBookmark(id: 'c', url: 'https://c.com'));
+      expect(await repo.getAllTags(), {'dev', 'read'});
+    });
+
+    test('getAllTags is empty when no bookmark has tags', () async {
+      await repo.upsert(makeBookmark());
+      expect(await repo.getAllTags(), isEmpty);
+    });
+
     test('replaceAll clears and replaces', () async {
       await repo.upsert(makeBookmark(id: 'old', url: 'https://old.com'));
       await repo.replaceAll([makeBookmark(id: 'new', url: 'https://new.com')]);
@@ -182,11 +194,7 @@ void main() {
       // default abort algorithm this aborted the batch and rolled back the whole
       // replacement, so the sync failed outright.
       final dupe = makeBookmark(id: 'a', url: 'https://a.com', title: 'A');
-      await repo.replaceAll([
-        dupe,
-        makeBookmark(id: 'b', url: 'https://b.com', title: 'B'),
-        dupe,
-      ]);
+      await repo.replaceAll([dupe, makeBookmark(id: 'b', url: 'https://b.com', title: 'B'), dupe]);
 
       final all = await repo.getAll();
       expect(all.map((b) => b.id), unorderedEquals(['a', 'b']));
