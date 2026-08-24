@@ -171,6 +171,11 @@ void main() {
       await tester.pumpWidget(buildWidget());
       await tester.pumpAndSettle();
 
+      // Let the sync banner expire: it overlays the chip row and would
+      // swallow the chip tap below.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
       expect(find.widgetWithText(FilterChip, 'dev'), findsOneWidget);
       expect(find.widgetWithText(FilterChip, 'read-later'), findsOneWidget);
 

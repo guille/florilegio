@@ -537,149 +537,161 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                 tooltip: 'Add bookmark',
                 child: const Icon(Icons.add),
               ),
-        body: Scrollbar(
-          controller: _scrollController,
-          interactive: true,
-          thumbVisibility: kIsWeb,
-          child: RefreshIndicator(
-            onRefresh: () => _loadAndSync(force: true),
-            child: CustomScrollView(
+        body: Stack(
+          children: [
+            Scrollbar(
               controller: _scrollController,
-              slivers: [
-                // Sync banner
-                if (_syncMessage != null)
-                  SliverToBoxAdapter(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: MaterialBanner(
-                          backgroundColor: _syncSuccess
-                              ? theme.colorScheme.primaryContainer
-                              : theme.colorScheme.errorContainer,
-                          content: Text(
-                            _syncMessage!,
-                            style: TextStyle(
-                              color: _syncSuccess
-                                  ? theme.colorScheme.onPrimaryContainer
-                                  : theme.colorScheme.onErrorContainer,
-                            ),
-                          ),
-                          actions: [
-                            if (!_syncSuccess)
-                              TextButton(
-                                onPressed: () {
-                                  setState(() => _syncMessage = null);
-                                  _sync(force: true);
-                                },
-                                child: const Text('RETRY'),
+              interactive: true,
+              thumbVisibility: kIsWeb,
+              child: RefreshIndicator(
+                onRefresh: () => _loadAndSync(force: true),
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    // Tag filter chips
+                    if ((_allTags.isNotEmpty || _selectedTag != null) && !_loading)
+                      SliverToBoxAdapter(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              // A horizontal ListView would force a tight height on
+                              // the chips, clipping them off-centre.
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: 6,
+                                children: [
+                                  // Keep the selected chip visible even when its
+                                  // last bookmark is gone, so it can be deselected.
+                                  for (final tag in {..._allTags, ?_selectedTag}.toList()..sort())
+                                    FilterChip(
+                                      label: Text(tag),
+                                      selected: _selectedTag == tag,
+                                      onSelected: (selected) {
+                                        setState(() => _selectedTag = selected ? tag : null);
+                                        _loadBookmarks();
+                                      },
+                                    ),
+                                ],
                               ),
-                            TextButton(
-                              onPressed: () => setState(() => _syncMessage = null),
-                              child: const Text('DISMISS'),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                // Tag filter chips
-                if ((_allTags.isNotEmpty || _selectedTag != null) && !_loading)
-                  SliverToBoxAdapter(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          // A horizontal ListView would force a tight height on
-                          // the chips, clipping them off-centre.
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            spacing: 6,
-                            children: [
-                              // Keep the selected chip visible even when its
-                              // last bookmark is gone, so it can be deselected.
-                              for (final tag in {..._allTags, ?_selectedTag}.toList()..sort())
-                                FilterChip(
-                                  label: Text(tag),
-                                  selected: _selectedTag == tag,
-                                  onSelected: (selected) {
-                                    setState(() => _selectedTag = selected ? tag : null);
-                                    _loadBookmarks();
-                                  },
-                                ),
-                            ],
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                // Content
-                if (_loading)
-                  const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
-                else if (_bookmarks.isEmpty)
-                  SliverFillRemaining(
-                    child: _EmptyState(
-                      hasFilters: _query.isNotEmpty || _selectedTag != null,
-                      onClearFilters: _clearFilters,
-                    ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final bookmark = _bookmarks[index];
-                      final card = _BookmarkCard(
-                        bookmark: bookmark,
-                        apiClient: widget.syncService.apiClient,
-                        selected: _selectedIds.contains(bookmark.id),
-                        selectionMode: _selectionMode,
-                        onTap: _selectionMode
-                            ? () => _toggleSelection(bookmark.id)
-                            : () => _openUrl(bookmark.url),
-                        onLongPress: () => _toggleSelection(bookmark.id),
-                        onEdit: () => _showEditDialog(bookmark),
-                        onDelete: () => _confirmDelete(bookmark),
-                        onSelect: () => _toggleSelection(bookmark.id),
-                        onCopy: () => _copyUrl(bookmark),
-                      );
-                      return Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 600),
-                          child: _selectionMode
-                              ? card
-                              : Dismissible(
-                                  key: ValueKey(bookmark.id),
-                                  direction: DismissDirection.startToEnd,
-                                  confirmDismiss: (_) async {
-                                    unawaited(_confirmDelete(bookmark));
-                                    return false; // Dialog handles the actual delete
-                                  },
-                                  background: Container(
-                                    alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.only(right: 20),
-                                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).colorScheme.errorContainer,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      Icons.delete,
-                                      color: Theme.of(context).colorScheme.onErrorContainer,
-                                    ),
-                                  ),
-                                  child: card,
-                                ),
+                    // Content
+                    if (_loading)
+                      const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+                    else if (_bookmarks.isEmpty)
+                      SliverFillRemaining(
+                        child: _EmptyState(
+                          hasFilters: _query.isNotEmpty || _selectedTag != null,
+                          onClearFilters: _clearFilters,
                         ),
-                      );
-                    }, childCount: _bookmarks.length),
-                  ),
-                // Extra bottom padding so the FAB doesn't obscure the last item.
-                const SliverPadding(
-                  padding: EdgeInsets.only(bottom: kFloatingActionButtonMargin + kFabHeight),
+                      )
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final bookmark = _bookmarks[index];
+                          final card = _BookmarkCard(
+                            bookmark: bookmark,
+                            apiClient: widget.syncService.apiClient,
+                            selected: _selectedIds.contains(bookmark.id),
+                            selectionMode: _selectionMode,
+                            onTap: _selectionMode
+                                ? () => _toggleSelection(bookmark.id)
+                                : () => _openUrl(bookmark.url),
+                            onLongPress: () => _toggleSelection(bookmark.id),
+                            onEdit: () => _showEditDialog(bookmark),
+                            onDelete: () => _confirmDelete(bookmark),
+                            onSelect: () => _toggleSelection(bookmark.id),
+                            onCopy: () => _copyUrl(bookmark),
+                          );
+                          return Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: _selectionMode
+                                  ? card
+                                  : Dismissible(
+                                      key: ValueKey(bookmark.id),
+                                      direction: DismissDirection.startToEnd,
+                                      confirmDismiss: (_) async {
+                                        unawaited(_confirmDelete(bookmark));
+                                        return false; // Dialog handles the actual delete
+                                      },
+                                      background: Container(
+                                        alignment: Alignment.centerRight,
+                                        padding: const EdgeInsets.only(right: 20),
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.errorContainer,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.delete,
+                                          color: Theme.of(context).colorScheme.onErrorContainer,
+                                        ),
+                                      ),
+                                      child: card,
+                                    ),
+                            ),
+                          );
+                        }, childCount: _bookmarks.length),
+                      ),
+                    // Extra bottom padding so the FAB doesn't obscure the last item.
+                    const SliverPadding(
+                      padding: EdgeInsets.only(bottom: kFloatingActionButtonMargin + kFabHeight),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+            // Sync banner. Overlaid rather than in the scroll view, so
+            // appearing and expiring don't reflow the list underneath.
+            if (_syncMessage != null)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: MaterialBanner(
+                      elevation: 2,
+                      backgroundColor: _syncSuccess
+                          ? theme.colorScheme.primaryContainer
+                          : theme.colorScheme.errorContainer,
+                      content: Text(
+                        _syncMessage!,
+                        style: TextStyle(
+                          color: _syncSuccess
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                      actions: [
+                        if (!_syncSuccess)
+                          TextButton(
+                            onPressed: () {
+                              setState(() => _syncMessage = null);
+                              _sync(force: true);
+                            },
+                            child: const Text('RETRY'),
+                          ),
+                        TextButton(
+                          onPressed: () => setState(() => _syncMessage = null),
+                          child: const Text('DISMISS'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
