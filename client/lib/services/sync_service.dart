@@ -66,12 +66,19 @@ class SyncService {
   /// When [force] is true (user-initiated refresh), skips the conditional GET.
   Future<SyncResult> sync({bool force = false}) async {
     // 1. Flush pending queue first (best-effort, don't fail the whole sync).
-    final flushed = await _flushPendingQueue();
+    final flush = await _flushPendingQueue();
+    final flushed = flush.flushed;
 
     // If we flushed items, the server data has changed under us, so the cached
     // validator no longer describes a state we hold.
     if (flushed > 0) {
       await _repository.setSyncToken(null);
+    }
+
+    // The flush already established the server is unreachable. Fetching would
+    // just spend another full timeout rediscovering that.
+    if (flush.offline != null) {
+      return SyncResult(success: false, exception: flush.offline, flushed: flushed);
     }
 
     // 2. Fetch all remote bookmarks and replace local.
@@ -95,10 +102,11 @@ class SyncService {
   static String _now() => DateTime.now().toUtc().toIso8601String();
 
   /// Flush the pending queue: try to push each URL to the API.
-  /// Returns the number of successfully flushed bookmarks.
-  Future<int> _flushPendingQueue() async {
+  /// Returns the number of successfully flushed bookmarks, and the
+  /// connectivity failure that cut the run short, if any.
+  Future<({int flushed, NetworkException? offline})> _flushPendingQueue() async {
     final pending = await _repository.getPending();
-    if (pending.isEmpty) return 0;
+    if (pending.isEmpty) return (flushed: 0, offline: null);
 
     var flushed = 0;
     for (final p in pending) {
@@ -107,6 +115,10 @@ class SyncService {
         await _apiClient.create(p.url, title: title);
         await _repository.removePending(p.url);
         flushed++;
+      } on NetworkException catch (e) {
+        // The server is unreachable, so every remaining item would pay the same
+        // timeout before failing the same way. Leave them queued.
+        return (flushed: flushed, offline: e);
       } on ApiException catch (e) {
         if (e.statusCode == 409) {
           // Already exists on server — remove from queue silently.
@@ -115,11 +127,12 @@ class SyncService {
         }
         // Other API errors: leave in queue for next sync.
       } catch (_) {
-        // Network error: leave in queue, stop trying (we're probably offline).
+        // Unexpected local failure (malformed response, storage error): leave
+        // in queue and stop rather than churn through the rest.
         break;
       }
     }
-    return flushed;
+    return (flushed: flushed, offline: null);
   }
 
   /// Save a new bookmark. Tries API first; on failure, queues locally.

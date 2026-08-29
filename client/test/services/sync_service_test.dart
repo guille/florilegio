@@ -411,6 +411,78 @@ void main() {
       expect(result.notModified, true);
     });
 
+    test('flush stops at the first unreachable-server failure', () async {
+      await repo.addPending('https://a.com');
+      await repo.addPending('https://b.com');
+      await repo.addPending('https://c.com');
+
+      var posts = 0;
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'POST') {
+          posts++;
+          throw http.ClientException('Connection refused', request.url);
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, false);
+      expect(result.exception, isA<NetworkException>());
+      // One attempt, not one per queued item.
+      expect(posts, 1);
+      expect((await repo.getPending()).length, 3);
+    });
+
+    test('sync skips the fetch when the flush proved the server unreachable', () async {
+      await repo.addPending('https://a.com');
+
+      var gets = 0;
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'POST') {
+          throw http.ClientException('Connection refused', request.url);
+        }
+        gets++;
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, false);
+      expect(gets, 0);
+    });
+
+    test('a non-connectivity API error does not stop the rest of the flush', () async {
+      await repo.addPending('https://bad.com');
+      await repo.addPending('https://good.com');
+
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'POST') {
+          final url = jsonDecode(request.body)['url'] as String;
+          if (url.contains('bad')) return http.Response('nope', 422);
+          return http.Response(
+            jsonEncode({
+              'id': 'g-1',
+              'url': 'https://good.com/',
+              'title': null,
+              'tags': null,
+              'created_at': '2024-01-01T00:00:00.000Z',
+              'updated_at': '2024-01-01T00:00:00.000Z',
+              'is_read': 0,
+            }),
+            201,
+          );
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 1);
+      expect((await repo.getPending()).single.url, 'https://bad.com');
+    });
+
     test('sync invalidates the sync token after flushing pending items', () async {
       // Set up: first sync succeeds and caches the sync token
       const etagValue = '"7"';

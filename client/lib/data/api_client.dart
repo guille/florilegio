@@ -23,6 +23,14 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// The request never reached the server: timeout, DNS failure, refused or
+/// black-holed connection. Status 0 because there was no response to take a
+/// status from. Callers that only care about HTTP outcomes can keep catching
+/// [ApiException].
+class NetworkException extends ApiException {
+  NetworkException(String message) : super(0, message);
+}
+
 class BookmarkApiClient {
   final String baseUrl;
   final String token;
@@ -64,11 +72,17 @@ class BookmarkApiClient {
   Map<String, String> get faviconHeaders => {'Authorization': 'Bearer $token'};
 
   /// Wraps requests with a timeout and a user-friendly error message.
+  ///
+  /// "Never reached the server" arrives as several unrelated exception types —
+  /// normalize them all to [NetworkException] so callers can distinguish an
+  /// unreachable server from one that answered.
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
       return await request().timeout(_timeout);
     } on TimeoutException {
-      throw ApiException(0, 'Request timed out — check your connection and try again');
+      throw NetworkException('Request timed out — check your connection and try again');
+    } on http.ClientException {
+      throw NetworkException('Could not reach the server — check your connection');
     }
   }
 
