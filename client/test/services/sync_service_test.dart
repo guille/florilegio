@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
+import '../support/throwing_delete_queue_repository.dart';
+
 void main() {
   late InMemoryBookmarkRepository repo;
 
@@ -711,6 +713,208 @@ void main() {
 
       await sync.sync();
       expect(await repo.getSyncToken(), '"7"');
+    });
+  });
+
+  group('SyncService offline deletes', () {
+    Bookmark makeBookmark(String id) => Bookmark(
+      id: id,
+      url: 'https://$id.com',
+      createdAt: DateTime.utc(2024),
+      updatedAt: DateTime.utc(2024),
+    );
+
+    test('deleteBookmark queues when the server is unreachable', () async {
+      await repo.upsert(makeBookmark('d1'));
+      final client = http_testing.MockClient(
+        (request) async => throw http.ClientException('Connection refused', request.url),
+      );
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmark('d1');
+      expect(result.queuedLocally, true);
+      expect(result.deletedRemotely, false);
+      expect(await repo.getById('d1'), isNull);
+      expect(await repo.getPendingDeletes(), ['d1']);
+      expect(await repo.getDeleteCount(), 1);
+    });
+
+    test('deleteBookmark treats 404 as already deleted', () async {
+      await repo.upsert(makeBookmark('d1'));
+      final client = http_testing.MockClient((request) async => http.Response('', 404));
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmark('d1');
+      expect(result.deletedRemotely, true);
+      expect(await repo.getById('d1'), isNull);
+      expect(await repo.getPendingDeletes(), isEmpty);
+    });
+
+    test('deleteBookmark keeps the row when the enqueue fails', () async {
+      final throwingRepo = ThrowingDeleteQueueRepository();
+      await throwingRepo.upsert(makeBookmark('d1'));
+      final client = http_testing.MockClient(
+        (request) async => throw http.ClientException('Connection refused', request.url),
+      );
+      final sync = SyncService(repository: throwingRepo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmark('d1');
+      expect(result.error, isNotNull);
+      expect(result.queuedLocally, false);
+      expect(await throwingRepo.getById('d1'), isNotNull);
+      expect(await throwingRepo.getDeleteCount(), 0);
+    });
+
+    test('sync flushes a queued delete without bumping the counter again', () async {
+      await repo.addPendingDelete('d1');
+      await repo.incrementDeleteCount();
+
+      var deletes = 0;
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') {
+          deletes++;
+          return http.Response('', 204);
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 1);
+      expect(deletes, 1);
+      expect(await repo.getPendingDeletes(), isEmpty);
+      expect(await repo.getDeleteCount(), 1);
+    });
+
+    test('a 404 during flush drops the delete from the queue', () async {
+      await repo.addPendingDelete('gone');
+
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') return http.Response('', 404);
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 1);
+      expect(await repo.getPendingDeletes(), isEmpty);
+    });
+
+    test('deletes flush before adds', () async {
+      await repo.addPendingDelete('1');
+      await repo.addPending('https://example.com');
+
+      final order = <String>[];
+      final client = http_testing.MockClient((request) async {
+        order.add(request.method);
+        if (request.method == 'DELETE') return http.Response('', 204);
+        if (request.method == 'POST') {
+          return http.Response(jsonEncode(sampleBookmarks.first), 201);
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 2);
+      expect(order.take(2), ['DELETE', 'POST']);
+    });
+
+    test('an unreachable server during the delete flush skips adds and fetch', () async {
+      await repo.addPendingDelete('1');
+      await repo.addPending('https://a.com');
+
+      var posts = 0;
+      var gets = 0;
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') {
+          throw http.ClientException('Connection refused', request.url);
+        }
+        if (request.method == 'POST') posts++;
+        if (request.method == 'GET') gets++;
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, false);
+      expect(result.exception, isA<NetworkException>());
+      expect(posts, 0);
+      expect(gets, 0);
+      expect(await repo.getPendingDeletes(), ['1']);
+      expect((await repo.getPending()).length, 1);
+    });
+
+    test('a 409 with a delete still queued keeps the add queued', () async {
+      // The 409 may be against the very bookmark the stuck delete hasn't
+      // removed yet; dropping the add as a duplicate would lose it.
+      await repo.addPendingDelete('1');
+      await repo.addPending('https://example.com');
+
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') return http.Response('boom', 500);
+        if (request.method == 'POST') {
+          return http.Response('{"error":"Bookmark already exists"}', 409);
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 0);
+      expect(await repo.getPendingDeletes(), ['1']);
+      expect((await repo.getPending()).single.url, 'https://example.com');
+    });
+
+    test('a stuck delete does not hold up unrelated adds', () async {
+      await repo.addPendingDelete('1');
+      await repo.addPending('https://unrelated.com');
+
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') return http.Response('boom', 500);
+        if (request.method == 'POST') {
+          return http.Response(jsonEncode(sampleBookmarks.first), 201);
+        }
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.sync();
+      expect(result.success, true);
+      expect(result.flushed, 1);
+      expect(await repo.getPendingDeletes(), ['1']);
+      expect(await repo.getPending(), isEmpty);
+    });
+
+    test('a fetch with a queued delete does not resurrect the bookmark', () async {
+      await repo.upsert(makeBookmark('1'));
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') {
+          throw http.ClientException('Connection refused', request.url);
+        }
+        // The server still has both rows: the delete never reached it.
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      await sync.deleteBookmark('1');
+
+      // Next sync: the flush fails again with a non-network error, but the
+      // fetch succeeds and must not bring the deleted row back.
+      final client2 = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') return http.Response('boom', 500);
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync2 = SyncService(repository: repo, apiClient: makeApi(client2));
+
+      final result = await sync2.sync();
+      expect(result.success, true);
+      expect(await repo.getById('1'), isNull);
+      expect(await repo.getById('2'), isNotNull);
     });
   });
 }

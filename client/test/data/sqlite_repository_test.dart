@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:florilegio/data/sqlite_repository.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -13,34 +16,13 @@ void main() {
   });
 
   setUp(() async {
-    final db = await databaseFactoryFfi.openDatabase(
-      inMemoryDatabasePath,
-      options: OpenDatabaseOptions(
-        // A fresh private in-memory DB per test; the default singleInstance
-        // returns one shared cached instance for the same path.
-        singleInstance: false,
-        version: 1,
-        onCreate: (db, version) async {
-          await db.execute('''
-            CREATE TABLE bookmarks (
-              id TEXT PRIMARY KEY,
-              url TEXT NOT NULL UNIQUE,
-              title TEXT,
-              tags TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            )
-          ''');
-          await db.execute('''
-            CREATE TABLE sync_metadata (
-              key TEXT PRIMARY KEY,
-              value TEXT
-            )
-          ''');
-        },
-      ),
-    );
-    repo = SqliteBookmarkRepository.fromDatabase(db);
+    // The real open(), so tests run against the production schema. A fresh
+    // temp file per test: the same in-memory path would hand back one shared
+    // cached instance.
+    final dir = await Directory.systemTemp.createTemp('florilegio_test');
+    addTearDown(() => dir.delete(recursive: true));
+    repo = await SqliteBookmarkRepository.open(path: p.join(dir.path, 'test.db'));
+    addTearDown(repo.close);
   });
 
   Bookmark makeBookmark({
@@ -206,6 +188,100 @@ void main() {
 
       final all = await repo.getAll();
       expect(all.map((b) => b.id), ['new']);
+    });
+
+    test('does not resurrect a bookmark with a queued delete', () async {
+      await repo.addPendingDelete('a');
+
+      await repo.replaceAll([
+        makeBookmark(id: 'a', url: 'https://a.com'),
+        makeBookmark(id: 'b', url: 'https://b.com'),
+      ]);
+
+      expect((await repo.getAll()).map((b) => b.id), ['b']);
+    });
+
+    test('restores a bookmark whose delete already flushed', () async {
+      await repo.addPendingDelete('a');
+      await repo.removePendingDelete('a');
+
+      await repo.replaceAll([makeBookmark(id: 'a', url: 'https://a.com')]);
+
+      expect(await repo.getById('a'), isNotNull);
+    });
+  });
+
+  group('SqliteBookmarkRepository pending deletes', () {
+    test('queue round-trips in insertion order', () async {
+      await repo.addPendingDelete('a');
+      await repo.addPendingDelete('b');
+      expect(await repo.getPendingDeletes(), ['a', 'b']);
+      expect(await repo.getPendingDeleteCount(), 2);
+
+      await repo.removePendingDelete('a');
+      expect(await repo.getPendingDeletes(), ['b']);
+      expect(await repo.getPendingDeleteCount(), 1);
+    });
+
+    test('queueing the same id twice keeps one entry', () async {
+      await repo.addPendingDelete('a');
+      await repo.addPendingDelete('a');
+      expect(await repo.getPendingDeletes(), ['a']);
+    });
+  });
+
+  group('SqliteBookmarkRepository migration', () {
+    test('upgrading from v4 creates pending_deletes', () async {
+      final dir = await Directory.systemTemp.createTemp('florilegio_test');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = p.join(dir.path, 'migrate.db');
+
+      // A v4 database: everything except pending_deletes.
+      final v4 = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 4,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE bookmarks (
+                id TEXT PRIMARY KEY,
+                url TEXT NOT NULL UNIQUE,
+                title TEXT,
+                tags TEXT,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE pending_bookmarks (
+                url TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE sync_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+              )
+            ''');
+          },
+        ),
+      );
+      await v4.insert('bookmarks', {
+        'id': 'kept',
+        'url': 'https://kept.com',
+        'created_at': '2024-01-01T00:00:00.000Z',
+        'updated_at': '2024-01-01T00:00:00.000Z',
+      });
+      await v4.close();
+
+      final migrated = await SqliteBookmarkRepository.open(path: path);
+      addTearDown(migrated.close);
+
+      await migrated.addPendingDelete('x');
+      expect(await migrated.getPendingDeletes(), ['x']);
+      expect(await migrated.getById('kept'), isNotNull);
     });
   });
 

@@ -251,22 +251,32 @@ class _BookmarkListViewState extends State<BookmarkListView> {
   }
 
   Future<void> _deleteBookmark(Bookmark bookmark) async {
-    try {
-      await widget.syncService.deleteBookmark(bookmark.id);
-      final allTags = await widget.repository.getAllTags();
-      if (!mounted) return;
-      setState(() {
-        _bookmarks.removeWhere((b) => b.id == bookmark.id);
-        _allTags = allTags;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bookmark deleted')));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete: ${_friendlyError(e)}')));
-      }
+    final result = await widget.syncService.deleteBookmark(bookmark.id);
+    if (!mounted) return;
+    if (result.error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete: ${_friendlyError(result.error!)}')));
+      return;
     }
+    // The delete already happened, so the row goes away and the chip refresh
+    // is best-effort.
+    var allTags = _allTags;
+    try {
+      allTags = await widget.repository.getAllTags();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _bookmarks.removeWhere((b) => b.id == bookmark.id);
+      _allTags = allTags;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.queuedLocally ? 'Deleted — will sync when online' : 'Bookmark deleted',
+        ),
+      ),
+    );
   }
 
   void _copyUrl(Bookmark bookmark) {

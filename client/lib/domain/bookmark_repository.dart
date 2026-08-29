@@ -45,6 +45,20 @@ abstract class BookmarkRepository {
   /// Get count of pending URLs.
   Future<int> getPendingCount();
 
+  // ── Pending deletes (offline deletes) ──────────────────────────────────
+
+  /// Queue a bookmark id for deletion when connectivity is restored.
+  Future<void> addPendingDelete(String id);
+
+  /// Get all queued delete ids, oldest first.
+  Future<List<String>> getPendingDeletes();
+
+  /// Remove an id from the delete queue (after successful push).
+  Future<void> removePendingDelete(String id);
+
+  /// Get count of queued deletes.
+  Future<int> getPendingDeleteCount();
+
   // ── Sync metadata ──────────────────────────────────────────────────────
 
   /// Store the validator (ETag) the server issued for the last synced

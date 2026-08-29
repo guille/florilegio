@@ -52,6 +52,18 @@ class SaveResult {
       alreadyExists = false;
 }
 
+/// Result of deleting a bookmark — confirmed by the server, queued for the
+/// next sync, or failed. On failure the bookmark is still visible locally.
+class DeleteResult {
+  final bool deletedRemotely;
+  final bool queuedLocally;
+  final Object? error;
+
+  DeleteResult.remote() : deletedRemotely = true, queuedLocally = false, error = null;
+  DeleteResult.queued() : deletedRemotely = false, queuedLocally = true, error = null;
+  DeleteResult.failed(this.error) : deletedRemotely = false, queuedLocally = false;
+}
+
 class SyncService {
   final BookmarkRepository _repository;
   final BookmarkApiClient _apiClient;
@@ -62,12 +74,20 @@ class SyncService {
   /// Exposed for UI needs that hit the API directly (e.g. favicon URLs).
   BookmarkApiClient get apiClient => _apiClient;
 
-  /// Full sync: flush pending queue, then fetch all remote bookmarks and replace local data.
+  /// Full sync: flush queued deletes, then the pending queue, then fetch all
+  /// remote bookmarks and replace local data.
   /// When [force] is true (user-initiated refresh), skips the conditional GET.
   Future<SyncResult> sync({bool force = false}) async {
-    // 1. Flush pending queue first (best-effort, don't fail the whole sync).
-    final flush = await _flushPendingQueue();
-    final flushed = flush.flushed;
+    // 1. Flush the queues first (best-effort, don't fail the whole sync).
+    // Deletes go before adds: a delete-then-re-add of the same URL must reach
+    // the server in that order, or the add 409s against the doomed bookmark.
+    final deletes = await _flushPendingDeletes();
+
+    // An unreachable server during the delete flush means every add would pay
+    // the same timeout before failing the same way.
+    final adds = deletes.offline != null ? (flushed: 0, offline: null) : await _flushPendingQueue();
+
+    final flushed = deletes.flushed + adds.flushed;
 
     // If we flushed items, the server data has changed under us, so the cached
     // validator no longer describes a state we hold.
@@ -77,8 +97,9 @@ class SyncService {
 
     // The flush already established the server is unreachable. Fetching would
     // just spend another full timeout rediscovering that.
-    if (flush.offline != null) {
-      return SyncResult(success: false, exception: flush.offline, flushed: flushed);
+    final offline = deletes.offline ?? adds.offline;
+    if (offline != null) {
+      return SyncResult(success: false, exception: offline, flushed: flushed);
     }
 
     // 2. Fetch all remote bookmarks and replace local.
@@ -120,8 +141,11 @@ class SyncService {
         // timeout before failing the same way. Leave them queued.
         return (flushed: flushed, offline: e);
       } on ApiException catch (e) {
-        if (e.statusCode == 409) {
-          // Already exists on server — remove from queue silently.
+        if (e.statusCode == 409 && await _repository.getPendingDeleteCount() == 0) {
+          // Already exists on server — remove from queue silently. But with a
+          // delete still queued, "exists" may be the very bookmark that delete
+          // hasn't removed yet; dropping the add now would lose it, so it
+          // waits until the delete queue drains.
           await _repository.removePending(p.url);
           flushed++;
         }
@@ -129,6 +153,38 @@ class SyncService {
       } catch (_) {
         // Unexpected local failure (malformed response, storage error): leave
         // in queue and stop rather than churn through the rest.
+        break;
+      }
+    }
+    return (flushed: flushed, offline: null);
+  }
+
+  /// Flush queued deletes: try to delete each id on the server, oldest first.
+  /// The delete counter is not touched — already counted at queue time.
+  Future<({int flushed, NetworkException? offline})> _flushPendingDeletes() async {
+    final pending = await _repository.getPendingDeletes();
+    if (pending.isEmpty) return (flushed: 0, offline: null);
+
+    var flushed = 0;
+    for (final id in pending) {
+      try {
+        await _apiClient.delete(id);
+        await _repository.removePendingDelete(id);
+        flushed++;
+      } on NetworkException catch (e) {
+        // Same rationale as _flushPendingQueue: stop rather than pay the
+        // timeout again for every remaining item.
+        return (flushed: flushed, offline: e);
+      } on ApiException catch (e) {
+        if (e.statusCode == 404) {
+          // Already gone on the server — remove from queue silently.
+          await _repository.removePendingDelete(id);
+          flushed++;
+        }
+        // Other API errors: leave in queue for next sync.
+      } catch (_) {
+        // Unexpected local failure (storage error): leave in queue and stop
+        // rather than churn through the rest.
         break;
       }
     }
@@ -171,11 +227,29 @@ class SyncService {
     return bookmark;
   }
 
-  /// Delete a bookmark via API and remove locally.
-  Future<void> deleteBookmark(String id) async {
-    await _apiClient.delete(id);
-    await _repository.delete(id);
-    await _repository.incrementDeleteCount();
+  /// Delete a bookmark. Tries API first; on failure, queues the delete for
+  /// the next sync. A 404 counts as done — gone is gone.
+  ///
+  /// Never throws: every failure mode is reported through [DeleteResult].
+  Future<DeleteResult> deleteBookmark(String id) async {
+    var queued = false;
+    try {
+      await _apiClient.delete(id);
+    } on ApiException catch (e) {
+      if (e.statusCode != 404) queued = true;
+    } catch (_) {
+      queued = true;
+    }
+    try {
+      // Enqueue before removing the row: if the enqueue fails the bookmark
+      // must stay visible, not vanish with nothing left to sync.
+      if (queued) await _repository.addPendingDelete(id);
+      await _repository.delete(id);
+      await _repository.incrementDeleteCount();
+    } catch (e) {
+      return DeleteResult.failed(e);
+    }
+    return queued ? DeleteResult.queued() : DeleteResult.remote();
   }
 
   /// Best-effort title fetch. Returns null on any failure.

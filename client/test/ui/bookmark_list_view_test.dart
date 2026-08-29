@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 import 'package:material_ui/material_ui.dart';
 
+import '../support/throwing_delete_queue_repository.dart';
+
 void main() {
   late InMemoryBookmarkRepository repo;
   late SyncService syncService;
@@ -232,6 +234,63 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Bookmark deleted'), findsOneWidget);
+    });
+
+    testWidgets('offline delete removes the row and shows the queued message', (tester) async {
+      for (final b in sampleBookmarks) {
+        await repo.upsert(b);
+      }
+      // Every request fails to reach the server: the sync leaves local data
+      // alone and the delete gets queued.
+      final offlineClient = http_testing.MockClient(
+        (request) async => throw http.ClientException('Connection refused', request.url),
+      );
+      final offlineSync = makeSyncService(offlineClient);
+
+      await tester.pumpWidget(buildWidget(overrideSyncService: offlineSync));
+      await tester.pumpAndSettle();
+      // Let the sync failure banner expire: it overlays the first card's menu.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(PopupMenuButton<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deleted — will sync when online'), findsOneWidget);
+      expect(find.text('Flutter'), findsNothing);
+      expect(await repo.getPendingDeletes(), ['1']);
+    });
+
+    testWidgets('failed delete keeps the row and shows the error', (tester) async {
+      // Local storage fails to queue the delete, so nothing is left to sync
+      // and the row must stay visible.
+      repo = ThrowingDeleteQueueRepository();
+      for (final b in sampleBookmarks) {
+        await repo.upsert(b);
+      }
+      final offlineClient = http_testing.MockClient(
+        (request) async => throw http.ClientException('Connection refused', request.url),
+      );
+      final offlineSync = makeSyncService(offlineClient);
+
+      await tester.pumpWidget(buildWidget(overrideSyncService: offlineSync));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(PopupMenuButton<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Failed to delete'), findsOneWidget);
+      expect(find.text('Flutter'), findsOneWidget);
     });
 
     testWidgets('popup menu shows Edit and Copy URL', (tester) async {

@@ -12,7 +12,7 @@ class SqliteBookmarkRepository implements BookmarkRepository {
     final dbPath = path ?? p.join(await getDatabasesPath(), 'florilegio.db');
     final db = await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE bookmarks (
@@ -35,6 +35,12 @@ class SqliteBookmarkRepository implements BookmarkRepository {
           CREATE TABLE sync_metadata (
             key TEXT PRIMARY KEY,
             value TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE pending_deletes (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL
           )
         ''');
       },
@@ -67,6 +73,14 @@ class SqliteBookmarkRepository implements BookmarkRepository {
             CREATE TABLE IF NOT EXISTS sync_metadata (
               key TEXT PRIMARY KEY,
               value TEXT
+            )
+          ''');
+        }
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS pending_deletes (
+              id TEXT PRIMARY KEY,
+              created_at TEXT NOT NULL
             )
           ''');
         }
@@ -167,6 +181,10 @@ class SqliteBookmarkRepository implements BookmarkRepository {
         batch.insert('bookmarks', b.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await batch.commit(noResult: true);
+      // A queued delete hasn't reached the server yet, so the fetched snapshot
+      // still contains the row. Re-hide it, or a sync whose flush failed but
+      // whose fetch succeeded would resurrect every not-yet-flushed delete.
+      await txn.execute('DELETE FROM bookmarks WHERE id IN (SELECT id FROM pending_deletes)');
     });
   }
 
@@ -208,6 +226,33 @@ class SqliteBookmarkRepository implements BookmarkRepository {
     final count = Sqflite.firstIntValue(
       await _db.rawQuery('SELECT COUNT(*) FROM pending_bookmarks'),
     );
+    return count ?? 0;
+  }
+
+  // ── Pending deletes ──────────────────────────────────────────────────────
+
+  @override
+  Future<void> addPendingDelete(String id) async {
+    await _db.insert('pending_deletes', {
+      'id': id,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  @override
+  Future<List<String>> getPendingDeletes() async {
+    final rows = await _db.query('pending_deletes', columns: ['id'], orderBy: 'created_at ASC');
+    return [for (final r in rows) r['id']! as String];
+  }
+
+  @override
+  Future<void> removePendingDelete(String id) async {
+    await _db.delete('pending_deletes', where: 'id = ?', whereArgs: [id]);
+  }
+
+  @override
+  Future<int> getPendingDeleteCount() async {
+    final count = Sqflite.firstIntValue(await _db.rawQuery('SELECT COUNT(*) FROM pending_deletes'));
     return count ?? 0;
   }
 

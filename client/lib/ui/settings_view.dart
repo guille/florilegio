@@ -37,7 +37,8 @@ class _SettingsViewState extends State<SettingsView> {
   bool _exporting = false;
   bool _importing = false;
   String? _lastRefreshed;
-  int _offlineQueueSize = 0;
+  int _queuedAdds = 0;
+  int _queuedDeletes = 0;
 
   @override
   void initState() {
@@ -45,7 +46,7 @@ class _SettingsViewState extends State<SettingsView> {
     _urlController = TextEditingController(text: widget.settings.baseUrl);
     _tokenController = TextEditingController(text: widget.settings.token);
     _loadLastRefreshed();
-    _loadOfflineQueueSize();
+    _loadQueueSizes();
   }
 
   Future<void> _loadLastRefreshed() async {
@@ -53,9 +54,23 @@ class _SettingsViewState extends State<SettingsView> {
     if (mounted) setState(() => _lastRefreshed = value);
   }
 
-  Future<void> _loadOfflineQueueSize() async {
-    final lm = await widget.repository?.getPendingCount();
-    if (mounted) setState(() => _offlineQueueSize = lm ?? 0);
+  Future<void> _loadQueueSizes() async {
+    final adds = await widget.repository?.getPendingCount();
+    final deletes = await widget.repository?.getPendingDeleteCount();
+    if (mounted) {
+      setState(() {
+        _queuedAdds = adds ?? 0;
+        _queuedDeletes = deletes ?? 0;
+      });
+    }
+  }
+
+  String get _queueLabel {
+    final parts = [
+      if (_queuedAdds > 0) '+$_queuedAdds',
+      if (_queuedDeletes > 0) '-$_queuedDeletes',
+    ];
+    return 'Bookmarks in queue: ${parts.join(' | ')}';
   }
 
   @override
@@ -265,10 +280,10 @@ class _SettingsViewState extends State<SettingsView> {
                 ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
               ),
             ],
-            if (_offlineQueueSize > 0) ...[
+            if (_queuedAdds > 0 || _queuedDeletes > 0) ...[
               const SizedBox(height: 24),
               Text(
-                'Bookmarks in queue: $_offlineQueueSize',
+                _queueLabel,
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),

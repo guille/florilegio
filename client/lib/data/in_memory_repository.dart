@@ -5,6 +5,7 @@ import 'package:florilegio/domain/bookmark_repository.dart';
 class InMemoryBookmarkRepository implements BookmarkRepository {
   final List<Bookmark> _bookmarks = [];
   final List<PendingBookmark> _pending = [];
+  final List<String> _pendingDeletes = [];
 
   @override
   Future<List<Bookmark>> getAll({
@@ -76,9 +77,11 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
 
   @override
   Future<void> replaceAll(List<Bookmark> bookmarks) async {
+    // Re-hide rows with a queued delete, matching the sqlite repository.
     _bookmarks
       ..clear()
-      ..addAll(bookmarks);
+      ..addAll(bookmarks)
+      ..removeWhere((b) => _pendingDeletes.contains(b.id));
   }
 
   @override
@@ -105,6 +108,24 @@ class InMemoryBookmarkRepository implements BookmarkRepository {
 
   @override
   Future<int> getPendingCount() async => _pending.length;
+
+  // ── Pending deletes ──────────────────────────────────────────────────────
+
+  @override
+  Future<void> addPendingDelete(String id) async {
+    if (!_pendingDeletes.contains(id)) _pendingDeletes.add(id);
+  }
+
+  @override
+  Future<List<String>> getPendingDeletes() async => List.unmodifiable(_pendingDeletes);
+
+  @override
+  Future<void> removePendingDelete(String id) async {
+    _pendingDeletes.remove(id);
+  }
+
+  @override
+  Future<int> getPendingDeleteCount() async => _pendingDeletes.length;
 
   // ── Sync metadata ──────────────────────────────────────────────────────
 

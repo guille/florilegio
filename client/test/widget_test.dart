@@ -1,3 +1,4 @@
+import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/services/settings_service.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +78,54 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Configure settings first'), findsOneWidget);
+    });
+  });
+
+  group('SettingsView offline queue', () {
+    Future<InMemoryBookmarkRepository> pumpWithRepo(
+      WidgetTester tester, {
+      int adds = 0,
+      int deletes = 0,
+    }) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final settings = SettingsService.forTest(prefs);
+
+      final repo = InMemoryBookmarkRepository();
+      for (var i = 0; i < adds; i++) {
+        await repo.addPending('https://queued$i.com');
+      }
+      for (var i = 0; i < deletes; i++) {
+        await repo.addPendingDelete('id-$i');
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsView(settings: settings, repository: repo),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    testWidgets('shows queued adds', (tester) async {
+      await pumpWithRepo(tester, adds: 1);
+      expect(find.text('Bookmarks in queue: +1'), findsOneWidget);
+    });
+
+    testWidgets('shows queued deletes', (tester) async {
+      await pumpWithRepo(tester, deletes: 2);
+      expect(find.text('Bookmarks in queue: -2'), findsOneWidget);
+    });
+
+    testWidgets('shows both queues', (tester) async {
+      await pumpWithRepo(tester, adds: 1, deletes: 2);
+      expect(find.text('Bookmarks in queue: +1 | -2'), findsOneWidget);
+    });
+
+    testWidgets('hides the line when both queues are empty', (tester) async {
+      await pumpWithRepo(tester);
+      expect(find.textContaining('Bookmarks in queue'), findsNothing);
     });
   });
 }

@@ -177,5 +177,19 @@ void main() {
       await repo.resetDeleteCount();
       expect(await repo.getDeleteCount(), 0);
     });
+
+    // Same prune semantics as SqliteBookmarkRepository.replaceAll.
+    test('replaceAll does not resurrect a bookmark with a queued delete', () async {
+      await repo.addPendingDelete('a');
+      await repo.replaceAll([makeBookmark(id: 'a'), makeBookmark(id: 'b', url: 'https://b.com')]);
+      expect((await repo.getAll()).map((b) => b.id), ['b']);
+    });
+
+    test('replaceAll restores a bookmark whose delete already flushed', () async {
+      await repo.addPendingDelete('a');
+      await repo.removePendingDelete('a');
+      await repo.replaceAll([makeBookmark(id: 'a')]);
+      expect(await repo.getById('a'), isNotNull);
+    });
   });
 }
