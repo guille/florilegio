@@ -458,7 +458,7 @@ void main() {
 
       final client = http_testing.MockClient((request) async {
         if (request.method == 'POST') {
-          final url = jsonDecode(request.body)['url'] as String;
+          final url = (jsonDecode(request.body) as Map<String, dynamic>)['url'] as String;
           if (url.contains('bad')) return http.Response('nope', 422);
           return http.Response(
             jsonEncode({

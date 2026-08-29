@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:http/http.dart' as http;
 
@@ -31,13 +32,27 @@ class NetworkException extends ApiException {
   NetworkException(String message) : super(0, message);
 }
 
+/// A request that can be torn down before it completes.
+class _AbortableRequest extends http.Request with http.Abortable {
+  @override
+  final Future<void>? abortTrigger;
+
+  _AbortableRequest(super.method, super.url, this.abortTrigger);
+}
+
 class BookmarkApiClient {
   final String baseUrl;
   final String token;
   final http.Client _client;
 
-  /// Request timeout. 30s is generous for mobile on poor connections.
-  static const _timeout = Duration(seconds: 30);
+  /// Deadline for response headers to arrive.
+  static const _headersTimeout = Duration(seconds: 8);
+
+  /// Deadline for the complete request, headers and body.
+  static const _totalTimeout = Duration(seconds: 15);
+
+  /// Export and import are bigger payloads so get a more generous timeout.
+  static const _bulkTimeout = Duration(seconds: 60);
 
   BookmarkApiClient({required String baseUrl, required this.token, http.Client? client})
     : baseUrl = _normalizeBaseUrl(baseUrl),
@@ -71,15 +86,36 @@ class BookmarkApiClient {
   /// Auth-only headers for favicon image requests.
   Map<String, String> get faviconHeaders => {'Authorization': 'Bearer $token'};
 
-  /// Wraps requests with a timeout and a user-friendly error message.
-  ///
   /// "Never reached the server" arrives as several unrelated exception types —
   /// normalize them all to [NetworkException] so callers can distinguish an
   /// unreachable server from one that answered.
-  Future<http.Response> _send(Future<http.Response> Function() request) async {
+  Future<http.Response> _send(
+    String method,
+    Uri uri, {
+    Map<String, String>? headers,
+    String? body,
+    bool bulk = false,
+  }) async {
+    // Letting a deadline simply abandon the request is not enough: nothing then
+    // drains the response, so the socket stays checked out of the pool even
+    // once the server does answer. The trigger tears it down instead.
+    final abort = Completer<void>();
+    final request = _AbortableRequest(method, uri, abort.future);
+    if (headers != null) request.headers.addAll(headers);
+    // After the headers: the body setter encodes using the charset they declare.
+    if (body != null) request.body = body;
+
+    final total = bulk ? _bulkTimeout : _totalTimeout;
+    final start = clock.now();
+
     try {
-      return await request().timeout(_timeout);
+      final response = await _client.send(request).timeout(bulk ? total : _headersTimeout);
+      final remaining = total - clock.now().difference(start);
+      return await http.Response.fromStream(
+        response,
+      ).timeout(remaining.isNegative ? Duration.zero : remaining);
     } on TimeoutException {
+      abort.complete();
       throw NetworkException('Request timed out — check your connection and try again');
     } on http.ClientException {
       throw NetworkException('Could not reach the server — check your connection');
@@ -98,7 +134,7 @@ class BookmarkApiClient {
     final headers = Map<String, String>.from(_headers);
     if (ifNoneMatch != null) headers['If-None-Match'] = ifNoneMatch;
 
-    final response = await _send(() => _client.get(_uri('/bookmarks', params), headers: headers));
+    final response = await _send('GET', _uri('/bookmarks', params), headers: headers);
     if (response.statusCode == 304) return null;
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);
@@ -157,7 +193,10 @@ class BookmarkApiClient {
     final payload = <String, dynamic>{'url': url};
     if (title != null) payload['title'] = title;
     final response = await _send(
-      () => _client.post(_uri('/bookmarks'), headers: _headers, body: jsonEncode(payload)),
+      'POST',
+      _uri('/bookmarks'),
+      headers: _headers,
+      body: jsonEncode(payload),
     );
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw ApiException(response.statusCode, response.body);
@@ -171,7 +210,10 @@ class BookmarkApiClient {
     if (tags != null) body['tags'] = tags; // API accepts array, joins to CSV
 
     final response = await _send(
-      () => _client.patch(_uri('/bookmarks/$id'), headers: _headers, body: jsonEncode(body)),
+      'PATCH',
+      _uri('/bookmarks/$id'),
+      headers: _headers,
+      body: jsonEncode(body),
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);
@@ -180,7 +222,7 @@ class BookmarkApiClient {
   }
 
   Future<void> delete(String id) async {
-    final response = await _send(() => _client.delete(_uri('/bookmarks/$id'), headers: _headers));
+    final response = await _send('DELETE', _uri('/bookmarks/$id'), headers: _headers);
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw ApiException(response.statusCode, response.body);
     }
@@ -188,7 +230,7 @@ class BookmarkApiClient {
 
   /// Export all bookmarks as raw JSON string.
   Future<String> exportJson() async {
-    final response = await _send(() => _client.get(_uri('/bookmarks/export'), headers: _headers));
+    final response = await _send('GET', _uri('/bookmarks/export'), headers: _headers, bulk: true);
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);
     }
@@ -199,7 +241,11 @@ class BookmarkApiClient {
   /// Returns a map with { imported, skipped, errors }.
   Future<Map<String, dynamic>> importJson(String jsonBody) async {
     final response = await _send(
-      () => _client.post(_uri('/bookmarks/import'), headers: _headers, body: jsonBody),
+      'POST',
+      _uri('/bookmarks/import'),
+      headers: _headers,
+      body: jsonBody,
+      bulk: true,
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);

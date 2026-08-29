@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:florilegio/data/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -145,6 +147,74 @@ void main() {
         final client = http_testing.MockClient((request) async => http.Response('error', 500));
         final api = makeApi(client);
         expect(() => api.delete('1'), throwsA(isA<ApiException>()));
+      });
+    });
+
+    group('timeouts', () {
+      /// A server that accepts the connection and then never answers — the
+      /// shape of an ISP-level block, and what a connect timeout would miss.
+      http.Client silentServer() =>
+          http_testing.MockClient((request) => Completer<http.Response>().future);
+
+      test('an unanswered request fails on the headers deadline', () {
+        fakeAsync((async) {
+          Object? error;
+          unawaited(
+            makeApi(silentServer()).listAll().then((_) {}, onError: (Object e) => error = e),
+          );
+
+          async.elapse(const Duration(seconds: 7));
+          expect(error, isNull, reason: 'should still be waiting before the deadline');
+
+          async.elapse(const Duration(seconds: 2));
+          expect(error, isA<NetworkException>());
+        });
+      });
+
+      /// Headers after [headersAfter], then a body that never completes.
+      http.Client stallsInBody(Duration headersAfter) => http_testing.MockClient.streaming((
+        request,
+        _,
+      ) async {
+        await Future<void>.delayed(headersAfter);
+        return http.StreamedResponse(StreamController<List<int>>().stream, 200, contentLength: 100);
+      });
+
+      test('the body deadline is the remainder of the total, not a fresh 15s', () {
+        fakeAsync((async) {
+          Object? error;
+          unawaited(
+            makeApi(
+              stallsInBody(const Duration(seconds: 5)),
+            ).listAll().then((_) {}, onError: (Object e) => error = e),
+          );
+
+          // Headers at 5s, so the body gets the remaining 10s of the 15s total.
+          async.elapse(const Duration(seconds: 14));
+          expect(error, isNull);
+
+          async.elapse(const Duration(seconds: 2));
+          expect(
+            error,
+            isA<NetworkException>(),
+            reason: 'must fail at 15s total, not 5s + a fresh 15s body budget',
+          );
+        });
+      });
+
+      test('export waits past the interactive deadline', () {
+        fakeAsync((async) {
+          Object? error;
+          unawaited(
+            makeApi(silentServer()).exportJson().then((_) {}, onError: (Object e) => error = e),
+          );
+
+          async.elapse(const Duration(seconds: 30));
+          expect(error, isNull, reason: 'bulk transfers get a longer budget');
+
+          async.elapse(const Duration(seconds: 31));
+          expect(error, isA<NetworkException>());
+        });
       });
     });
 
