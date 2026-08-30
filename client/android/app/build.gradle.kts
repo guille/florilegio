@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Present only once `mise run decrypt-signing` has run, which needs the age key.
+val signingCreds = rootProject.file("signing/key.properties").takeIf { it.exists() }?.let { file ->
+    Properties().apply { file.inputStream().use { load(it) } }
 }
 
 android {
@@ -30,25 +37,27 @@ android {
     }
 
     signingConfigs {
-        create("personal") {
-            storeFile = rootProject.file("signing/personal.keystore").also {
-                check(it.exists()) {
-                    "signing/personal.keystore not found"
-                }
+        signingCreds?.let { creds ->
+            create("personal") {
+                storeFile = rootProject.file("signing/personal.keystore")
+                storePassword = creds.getProperty("KEYSTORE_STORE_PASSWORD")
+                keyAlias = creds.getProperty("KEYSTORE_KEY_ALIAS")
+                keyPassword = creds.getProperty("KEYSTORE_KEY_PASSWORD")
             }
-            storePassword = System.getenv("KEYSTORE_STORE_PASSWORD")
-                ?: error("KEYSTORE_STORE_PASSWORD not set")
-            keyAlias = System.getenv("KEYSTORE_KEY_ALIAS")
-                ?: error("KEYSTORE_KEY_ALIAS not set")
-            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
-                ?: error("KEYSTORE_KEY_PASSWORD not set")
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("personal")
+            signingConfig = signingConfigs.findByName("personal")
         }
+    }
+}
+
+// Without this, a credentialless box would quietly emit an unsigned release APK.
+gradle.taskGraph.whenReady {
+    check(signingCreds != null || allTasks.none { it.name.endsWith("Release") }) {
+        "release builds need signing credentials: run `mise run build:android:release`"
     }
 }
 

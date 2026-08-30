@@ -2,10 +2,6 @@
 path = [
   "{{config_root}}/node_modules/.bin",
 ]
-file = { path = "android/signing/creds.env.json", redact = true }
-
-[settings.sops]
-age_key_file = "~/.config/age/key.txt"
 
 [deps.flutter]
 auto = true
@@ -33,10 +29,6 @@ description = "Runs the frontend (Android)"
 run         = "flutter run -d web-server --no-web-resources-cdn --wasm"
 description = "Runs the frontend (web)"
 
-[tasks."build:android"]
-depends = "decrypt-signing"
-run     = "flutter build apk"
-
 [tasks."build:web"]
 sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart", "web/**/*"]
 outputs = ["build/web-dist/**/*"]
@@ -47,8 +39,21 @@ depends     = "build:web"
 description = "Deploys the frontend to Cloudflare Pages"
 run         = "wrangler pages deploy"
 
+[tasks."build:android:debug"]
+description = "Builds a debug APK"
+run         = "flutter build apk --debug"
+
+[tasks."build:android:release"]
+depends     = "decrypt-signing"
+description = "Builds a release APK, signed with the personal keystore"
+run         = "flutter build apk --release"
+
 [tasks.decrypt-signing]
-description = "Decrypt signing keystore"
-sources     = ["android/signing/personal.keystore.age"]
-outputs     = ["android/signing/personal.keystore"]
-run         = "age -d -i ~/.config/age/key.txt -o android/signing/personal.keystore android/signing/personal.keystore.age"
+description = "Decrypt the signing keystore and its credentials"
+env         = { SOPS_AGE_KEY_FILE = "{{env.HOME}}/.config/age/key.txt" }
+sources     = ["android/signing/personal.keystore.age", "android/signing/creds.env.json"]
+outputs     = ["android/signing/personal.keystore", "android/signing/key.properties"]
+run         = [
+  "age -d -i $SOPS_AGE_KEY_FILE -o android/signing/personal.keystore android/signing/personal.keystore.age",
+  "sops -d --output-type dotenv --output android/signing/key.properties android/signing/creds.env.json",
+]

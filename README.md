@@ -96,7 +96,7 @@ Configure the extension with the same endpoint URL and token.
 
 ```sh
 cd client
-mise run build:android
+mise run build:android:release
 # install build/app/outputs/flutter-apk/app-release.apk on your device
 ```
 
