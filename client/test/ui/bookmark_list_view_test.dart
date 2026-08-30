@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:florilegio/data/api_client.dart';
 import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/domain/bookmark.dart';
+import 'package:florilegio/main.dart' show buildTheme;
 import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/bookmark_list_view.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +59,22 @@ void main() {
 
   List<Map<String, dynamic>> sampleJson() => sampleBookmarks.map(toApiJson).toList();
 
+  /// A library large enough to overflow the test viewport, so the list can be
+  /// scrolled to its end.
+  List<Map<String, dynamic>> manyJson() => [
+    for (var i = 0; i < 20; i++)
+      toApiJson(
+        Bookmark(
+          id: 'm$i',
+          url: 'https://example.com/$i',
+          title: 'Item $i',
+          tags: const ['tag'],
+          createdAt: DateTime(2024, 6, 1),
+          updatedAt: now,
+        ),
+      ),
+  ];
+
   SyncService makeSyncService(http.Client client) {
     final api = BookmarkApiClient(baseUrl: 'https://api.test', token: 'tok', client: client);
     return SyncService(repository: repo, apiClient: api);
@@ -98,6 +115,7 @@ void main() {
   });
 
   Widget buildWidget({SyncService? overrideSyncService}) => MaterialApp(
+    theme: buildTheme(Brightness.light),
     home: BookmarkListView(
       repository: repo,
       syncService: overrideSyncService ?? syncService,
@@ -425,17 +443,45 @@ void main() {
       expect(find.text('Dart Language'), findsOneWidget);
     });
 
-    testWidgets('list has bottom padding so last item is not obscured by FAB', (tester) async {
-      await tester.pumpWidget(buildWidget());
-      await tester.pumpAndSettle();
+    // Scaffold floats the FAB clear of the system bars, so the list's trailing
+    // padding has to cover that inset on top of the FAB's own height. A flat
+    // constant leaves the last card underneath the FAB by exactly the inset.
+    for (final inset in const [0.0, 24.0, 48.0]) {
+      testWidgets('FAB does not obscure the last item, ${inset}dp inset', (tester) async {
+        final client = http_testing.MockClient(
+          (request) async => http.Response(jsonEncode(manyJson()), 200),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  viewPadding: EdgeInsets.only(bottom: inset),
+                  padding: EdgeInsets.only(bottom: inset),
+                ),
+                child: BookmarkListView(
+                  repository: repo,
+                  syncService: makeSyncService(client),
+                  onSettingsTap: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      const expectedPadding = kFloatingActionButtonMargin + kFabHeight;
-      final sliverPadding = find.byWidgetPredicate(
-        (widget) =>
-            widget is SliverPadding && (widget.padding as EdgeInsets).bottom >= expectedPadding,
-      );
-      expect(sliverPadding, findsOneWidget);
-    });
+        final list = tester
+            .stateList<ScrollableState>(find.byType(Scrollable))
+            .firstWhere((s) => s.position.axis == Axis.vertical);
+        list.position.jumpTo(list.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.getRect(find.byType(Card).last).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byType(FloatingActionButton)).top),
+        );
+      });
+    }
 
     testWidgets('sort menu shows Random option and selects it', (tester) async {
       await tester.pumpWidget(buildWidget());
@@ -592,12 +638,44 @@ void main() {
       expect(find.text('Bookmark saved'), findsOneWidget);
     });
 
-    testWidgets('has an interactive scrollbar for fast scrolling', (tester) async {
-      await tester.pumpWidget(buildWidget());
+    testWidgets('dragging the scrollbar thumb scrolls the list', (tester) async {
+      final manyClient = http_testing.MockClient(
+        (request) async => http.Response(jsonEncode(manyJson()), 200),
+      );
+      await tester.pumpWidget(buildWidget(overrideSyncService: makeSyncService(manyClient)));
       await tester.pumpAndSettle();
 
-      final scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
-      expect(scrollbar.interactive, isTrue);
+      // The sync banner overlays the top of the scrollbar track, where the
+      // thumb rests at offset 0. Let it expire before reaching for the thumb.
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      // Not find.byType(Scrollable) — the tag chip strip is one too.
+      final controller = tester.widget<CustomScrollView>(find.byType(CustomScrollView)).controller!;
+      expect(controller.position.pixels, 0);
+
+      // Grab the thumb where it rests at offset 0: top of the track, hard
+      // against the right edge.
+      final track = tester.getRect(find.byType(CustomScrollView));
+      await tester.dragFrom(track.topRight + const Offset(-2, 20), const Offset(0, 100));
+      await tester.pumpAndSettle();
+
+      // A thumb drag maps track distance onto content distance, so 100px of
+      // finger travel moves the list further than 100px. Dragging the list
+      // itself would have moved it exactly 100px, and the wrong way.
+      expect(controller.position.pixels, greaterThan(150));
+    });
+
+    testWidgets('scrollbar thumb stays visible on a long list', (tester) async {
+      final manyClient = http_testing.MockClient(
+        (request) async => http.Response(jsonEncode(manyJson()), 200),
+      );
+      await tester.pumpWidget(buildWidget(overrideSyncService: makeSyncService(manyClient)));
+      await tester.pumpAndSettle();
+
+      // Without this the thumb fades out, and the only way to summon it back is
+      // the scrolling that dragging it is meant to replace.
+      expect(tester.widget<Scrollbar>(find.byType(Scrollbar)).thumbVisibility, isTrue);
     });
 
     testWidgets('long press enters selection mode', (tester) async {

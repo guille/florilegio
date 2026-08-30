@@ -9,10 +9,42 @@ import 'package:florilegio/services/title_fetcher.dart';
 import 'package:florilegio/ui/bookmark_list_view.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:florilegio/ui/share_save_overlay.dart';
+import 'package:florilegio/ui/system_overlay_style.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+const _seedColor = Color(0xFF3E7FA9);
+
+ThemeData buildTheme(Brightness brightness) {
+  final colorScheme = ColorScheme.fromSeed(seedColor: _seedColor, brightness: brightness);
+  return ThemeData(
+    colorScheme: colorScheme,
+    fontFamily: "Atkinson Hyperlegible Next",
+    // Load-bearing despite naming the same family: without a fallback Flutter
+    // reaches for Roboto from gstatic.
+    fontFamilyFallback: const ["Atkinson Hyperlegible Next"],
+    appBarTheme: AppBarThemeData(
+      // Hold the bar in its scrolled-under look at all times, rather than
+      // letting it sit flush with the page until content slides beneath it.
+      // Both halves are needed: the colour, and the elevation that AppBar
+      // turns into an 8% surfaceTint overlay on top of it.
+      backgroundColor: colorScheme.surfaceContainer,
+      elevation: 3,
+      systemOverlayStyle: systemOverlayStyleFor(brightness),
+    ),
+    // The scrollbar is a control here, not just a position readout, so it gets
+    // a grabbable thumb instead of Material's 4px Android hairline. It widens
+    // under the finger, where the thumb would otherwise be hidden by it.
+    scrollbarTheme: ScrollbarThemeData(
+      interactive: true,
+      radius: const Radius.circular(8),
+      thickness: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.dragged) ? 12 : 6,
+      ),
+    ),
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,37 +139,9 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Florilegio',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3E7FA9)),
-      fontFamily: "Atkinson Hyperlegible Next",
-      fontFamilyFallback: ["Atkinson Hyperlegible Next"],
-    ),
-    darkTheme: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF3E7FA9),
-        brightness: Brightness.dark,
-      ),
-      fontFamily: "Atkinson Hyperlegible Next",
-      fontFamilyFallback: ["Atkinson Hyperlegible Next"],
-    ),
+    theme: buildTheme(Brightness.light),
+    darkTheme: buildTheme(Brightness.dark),
     themeMode: widget.settings.themeMode,
-    // AppBar's default overlay style omits the navigation bar fields, and the
-    // engine skips every nav bar call when they're null, so without this the
-    // bar keeps an unclaimed platform default that follows no theme at all.
-    // Under the mandatory edge-to-edge of targetSdk 36, colour is a no-op;
-    // dropping the contrast scrim is what lets the bar blend into the app.
-    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        systemNavigationBarIconBrightness: Theme.of(context).brightness == Brightness.dark
-            ? Brightness.light
-            : Brightness.dark,
-        systemNavigationBarContrastEnforced: false,
-      ),
-      child: child!,
-    ),
     home: _pendingShareUrl != null && _syncService != null
         ? ShareSaveOverlay(
             url: _pendingShareUrl!,

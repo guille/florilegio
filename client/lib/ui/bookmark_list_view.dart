@@ -15,6 +15,10 @@ import 'package:url_launcher/url_launcher.dart';
 /// Flutter doesn't expose this as a public constant.
 const kFabHeight = 56.0;
 
+/// Bookmark count past which the scrollbar thumb stays visible: roughly two
+/// screenfuls, the point where dragging beats flinging.
+const _kDragScrollThreshold = 20;
+
 String _friendlyError(Object e) {
   if (e is ApiException) return e.userMessage;
   final s = e.toString();
@@ -453,12 +457,9 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                     ? TextField(
                         focusNode: _searchFocusNode,
                         autofocus: true,
-                        style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: InputDecoration(
                           hintText: 'Search bookmarks...',
-                          hintStyle: TextStyle(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
+                          hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                           border: InputBorder.none,
                         ),
                         onChanged: (val) {
@@ -551,8 +552,11 @@ class _BookmarkListViewState extends State<BookmarkListView> {
           children: [
             Scrollbar(
               controller: _scrollController,
-              interactive: true,
-              thumbVisibility: kIsWeb,
+              // Styling lives in ThemeData.scrollbarTheme; only this depends on
+              // the content. Left to fade, the thumb has to be summoned by the
+              // very scrolling it exists to replace, so on a list long enough
+              // to drag through it stays put.
+              thumbVisibility: kIsWeb || _bookmarks.length >= _kDragScrollThreshold,
               child: RefreshIndicator(
                 onRefresh: () => _loadAndSync(force: true),
                 child: CustomScrollView(
@@ -652,9 +656,16 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                           );
                         }, childCount: _bookmarks.length),
                       ),
-                    // Extra bottom padding so the FAB doesn't obscure the last item.
-                    const SliverPadding(
-                      padding: EdgeInsets.only(bottom: kFloatingActionButtonMargin + kFabHeight),
+                    // Extra bottom padding so the FAB doesn't obscure the last
+                    // item. Scaffold floats the FAB clear of the system bars,
+                    // so that inset stacks on top of the FAB's own height.
+                    SliverPadding(
+                      padding: EdgeInsets.only(
+                        bottom:
+                            kFloatingActionButtonMargin +
+                            kFabHeight +
+                            MediaQuery.viewPaddingOf(context).bottom,
+                      ),
                     ),
                   ],
                 ),
