@@ -30,6 +30,7 @@ dependencies:
   flutter_secure_storage: ^11.0.0
   http: ^1.4.0
   material_ui: any
+  meta: ^1.19.0
   path: ^1.9.1
   shared_preferences: ^2.5.3
   sqflite: ^2.4.2

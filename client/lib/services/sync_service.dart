@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:florilegio/data/api_client.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/title_fetcher.dart';
+import 'package:meta/meta.dart';
 
 class SyncResult {
   final bool success;
@@ -52,16 +55,14 @@ class SaveResult {
       alreadyExists = false;
 }
 
-/// Result of deleting a bookmark — confirmed by the server, queued for the
-/// next sync, or failed. On failure the bookmark is still visible locally.
+/// Result of deleting a bookmark: success means the local persist worked, not
+/// that the server has it yet — see [SyncService.deleteBookmark]. On failure
+/// the bookmark is still visible locally.
 class DeleteResult {
-  final bool deletedRemotely;
-  final bool queuedLocally;
   final Object? error;
 
-  DeleteResult.remote() : deletedRemotely = true, queuedLocally = false, error = null;
-  DeleteResult.queued() : deletedRemotely = false, queuedLocally = true, error = null;
-  DeleteResult.failed(this.error) : deletedRemotely = false, queuedLocally = false;
+  DeleteResult.ok() : error = null;
+  DeleteResult.failed(this.error);
 }
 
 class SyncService {
@@ -74,10 +75,51 @@ class SyncService {
   /// Exposed for UI needs that hit the API directly (e.g. favicon URLs).
   BookmarkApiClient get apiClient => _apiClient;
 
+  /// Tail of the pass chain. Lazy rather than a `Future.value()` initializer:
+  /// that future completes on the zone that built the service, which a
+  /// fake-async test zone never pumps.
+  Future<void>? _tail;
+  bool _flushQueued = false;
+
+  /// One queue-mutating pass — a [sync] or a delete flush — runs at a time:
+  /// [BookmarkRepository.replaceAll] must never interleave with
+  /// [BookmarkRepository.removePendingDelete], or an in-flight fetch can
+  /// resurrect a just-flushed delete. Saves touch neither and are deliberately
+  /// not serialized.
+  ///
+  /// Callers append rather than join, so a delete queued mid-pass is picked up
+  /// by the next pass instead of being missed by the running one. Never call
+  /// from inside a pass: a pass that awaits the chain deadlocks.
+  Future<T> _serial<T>(Future<T> Function() body) {
+    final result = _tail?.then((_) => body()) ?? body();
+    _tail = result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
+
+  /// Completes when every pass queued so far has drained; errors are swallowed.
+  @visibleForTesting
+  Future<void> get idle => _tail ?? Future.value();
+
+  /// Appends a delete flush to the chain, coalescing with one that is queued
+  /// but not yet started — that one will read the queue after this caller's
+  /// write, so nothing is dropped.
+  void _kickFlush() {
+    if (_flushQueued) return;
+    _flushQueued = true;
+    // .ignore() rather than unawaited(): the flusher shouldn't throw, but an
+    // escape here would be an unhandled zone error.
+    _serial(() {
+      _flushQueued = false; // cleared at pass start: later deletes append anew
+      return _flushPendingDeletes();
+    }).ignore();
+  }
+
   /// Full sync: flush queued deletes, then the pending queue, then fetch all
   /// remote bookmarks and replace local data.
   /// When [force] is true (user-initiated refresh), skips the conditional GET.
-  Future<SyncResult> sync({bool force = false}) async {
+  Future<SyncResult> sync({bool force = false}) => _serial(() => _sync(force: force));
+
+  Future<SyncResult> _sync({bool force = false}) async {
     // 1. Flush the queues first (best-effort, don't fail the whole sync).
     // Deletes go before adds: a delete-then-re-add of the same URL must reach
     // the server in that order, or the add 409s against the doomed bookmark.
@@ -162,7 +204,14 @@ class SyncService {
   /// Flush queued deletes: try to delete each id on the server, oldest first.
   /// The delete counter is not touched — already counted at queue time.
   Future<({int flushed, NetworkException? offline})> _flushPendingDeletes() async {
-    final pending = await _repository.getPendingDeletes();
+    // _sync awaits this flush outside any try, so a storage throw here would
+    // reject sync() into the UI; swallow it and let the next pass retry.
+    final List<String> pending;
+    try {
+      pending = await _repository.getPendingDeletes();
+    } catch (_) {
+      return (flushed: 0, offline: null);
+    }
     if (pending.isEmpty) return (flushed: 0, offline: null);
 
     var flushed = 0;
@@ -227,29 +276,22 @@ class SyncService {
     return bookmark;
   }
 
-  /// Delete a bookmark. Tries API first; on failure, queues the delete for
-  /// the next sync. A 404 counts as done — gone is gone.
+  /// Delete a bookmark: persist the delete and hide the row immediately, then
+  /// flush it to the server in the background.
   ///
   /// Never throws: every failure mode is reported through [DeleteResult].
   Future<DeleteResult> deleteBookmark(String id) async {
-    var queued = false;
-    try {
-      await _apiClient.delete(id);
-    } on ApiException catch (e) {
-      if (e.statusCode != 404) queued = true;
-    } catch (_) {
-      queued = true;
-    }
     try {
       // Enqueue before removing the row: if the enqueue fails the bookmark
       // must stay visible, not vanish with nothing left to sync.
-      if (queued) await _repository.addPendingDelete(id);
+      await _repository.addPendingDelete(id);
       await _repository.delete(id);
       await _repository.incrementDeleteCount();
     } catch (e) {
       return DeleteResult.failed(e);
     }
-    return queued ? DeleteResult.queued() : DeleteResult.remote();
+    _kickFlush();
+    return DeleteResult.ok();
   }
 
   /// Best-effort title fetch. Returns null on any failure.

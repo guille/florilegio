@@ -274,13 +274,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
       _bookmarks.removeWhere((b) => b.id == bookmark.id);
       _allTags = allTags;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.queuedLocally ? 'Deleted — will sync when online' : 'Bookmark deleted',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bookmark deleted')));
   }
 
   void _copyUrl(Bookmark bookmark) {

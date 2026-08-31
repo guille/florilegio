@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:florilegio/data/api_client.dart';
@@ -203,7 +204,7 @@ void main() {
       expect(local.first.id, 'local-1');
     });
 
-    test('deleteBookmark removes from API and local', () async {
+    test('deleteBookmark removes locally and flushes to the API', () async {
       await repo.upsert(
         Bookmark(
           id: 'del-1',
@@ -221,6 +222,8 @@ void main() {
 
       await sync.deleteBookmark('del-1');
       expect(await repo.getById('del-1'), isNull);
+      await sync.idle;
+      expect(await repo.getPendingDeletes(), isEmpty);
     });
 
     test('deleteBookmark increments delete counter', () async {
@@ -239,6 +242,7 @@ void main() {
       expect(await repo.getDeleteCount(), 0);
       await sync.deleteBookmark('del-2');
       expect(await repo.getDeleteCount(), 1);
+      await sync.idle;
     });
 
     test('saveBookmark sends title from fetcher in create request', () async {
@@ -732,11 +736,11 @@ void main() {
       final sync = SyncService(repository: repo, apiClient: makeApi(client));
 
       final result = await sync.deleteBookmark('d1');
-      expect(result.queuedLocally, true);
-      expect(result.deletedRemotely, false);
+      expect(result.error, isNull);
       expect(await repo.getById('d1'), isNull);
-      expect(await repo.getPendingDeletes(), ['d1']);
       expect(await repo.getDeleteCount(), 1);
+      await sync.idle;
+      expect(await repo.getPendingDeletes(), ['d1']);
     });
 
     test('deleteBookmark treats 404 as already deleted', () async {
@@ -745,24 +749,29 @@ void main() {
       final sync = SyncService(repository: repo, apiClient: makeApi(client));
 
       final result = await sync.deleteBookmark('d1');
-      expect(result.deletedRemotely, true);
+      expect(result.error, isNull);
       expect(await repo.getById('d1'), isNull);
+      await sync.idle;
       expect(await repo.getPendingDeletes(), isEmpty);
     });
 
     test('deleteBookmark keeps the row when the enqueue fails', () async {
       final throwingRepo = ThrowingDeleteQueueRepository();
       await throwingRepo.upsert(makeBookmark('d1'));
-      final client = http_testing.MockClient(
-        (request) async => throw http.ClientException('Connection refused', request.url),
-      );
+      var requests = 0;
+      final client = http_testing.MockClient((request) async {
+        requests++;
+        return http.Response('', 204);
+      });
       final sync = SyncService(repository: throwingRepo, apiClient: makeApi(client));
 
       final result = await sync.deleteBookmark('d1');
       expect(result.error, isNotNull);
-      expect(result.queuedLocally, false);
       expect(await throwingRepo.getById('d1'), isNotNull);
       expect(await throwingRepo.getDeleteCount(), 0);
+      // Persist-first: a delete that fails to persist never touches the network.
+      await sync.idle;
+      expect(requests, 0);
     });
 
     test('sync flushes a queued delete without bumping the counter again', () async {
@@ -902,6 +911,7 @@ void main() {
       final sync = SyncService(repository: repo, apiClient: makeApi(client));
 
       await sync.deleteBookmark('1');
+      await sync.idle;
 
       // Next sync: the flush fails again with a non-network error, but the
       // fetch succeeds and must not bring the deleted row back.
@@ -917,4 +927,91 @@ void main() {
       expect(await repo.getById('2'), isNotNull);
     });
   });
+
+  group('SyncService pass serialization', () {
+    Bookmark makeBookmark(String id) => Bookmark(
+      id: id,
+      url: 'https://$id.com',
+      createdAt: DateTime.utc(2024),
+      updatedAt: DateTime.utc(2024),
+    );
+
+    test('a delete during an in-flight fetch is flushed and not resurrected', () async {
+      await repo.upsert(makeBookmark('1'));
+
+      final fetchStarted = Completer<void>();
+      final fetchGate = Completer<void>();
+      var deletes = 0;
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'DELETE') {
+          deletes++;
+          return http.Response('', 204);
+        }
+        // The snapshot is taken before the delete lands: it still holds '1'.
+        if (!fetchStarted.isCompleted) fetchStarted.complete();
+        await fetchGate.future;
+        return http.Response(jsonEncode(sampleBookmarks), 200);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final syncFuture = sync.sync();
+      await fetchStarted.future;
+
+      // Mid-fetch delete: its flush must wait for the running pass (see _serial).
+      final result = await sync.deleteBookmark('1');
+      expect(result.error, isNull);
+      expect(await repo.getById('1'), isNull);
+
+      // Give an unserialized flush ample time to (incorrectly) land its
+      // removePendingDelete before the fetch resumes.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      fetchGate.complete();
+      expect((await syncFuture).success, true);
+      await sync.idle;
+
+      // The flush appended mid-pass still drained (append, don't join)...
+      expect(deletes, 1);
+      expect(await repo.getPendingDeletes(), isEmpty);
+      // ...and the fetched snapshot did not resurrect the deleted row.
+      expect(await repo.getById('1'), isNull);
+      expect(await repo.getById('2'), isNotNull);
+    });
+
+    test('rapid deletes coalesce into at most two flush passes', () async {
+      final countingRepo = CountingDeleteReadsRepository();
+      for (final id in ['a', 'b', 'c', 'd']) {
+        await countingRepo.upsert(makeBookmark(id));
+      }
+
+      final deleteGate = Completer<void>();
+      final client = http_testing.MockClient((request) async {
+        await deleteGate.future;
+        return http.Response('', 204);
+      });
+      final sync = SyncService(repository: countingRepo, apiClient: makeApi(client));
+
+      // The first delete's flush blocks on the gate; the rest arrive while it
+      // is stuck and must coalesce into one queued flush, not one each.
+      for (final id in ['a', 'b', 'c', 'd']) {
+        await sync.deleteBookmark(id);
+      }
+      deleteGate.complete();
+      await sync.idle;
+
+      expect(countingRepo.pendingDeleteReads, 2);
+      expect(await countingRepo.getPendingDeletes(), isEmpty);
+    });
+  });
+}
+
+/// Counts flush passes: the chain does one [getPendingDeletes] read per pass.
+class CountingDeleteReadsRepository extends InMemoryBookmarkRepository {
+  int pendingDeleteReads = 0;
+
+  @override
+  Future<List<String>> getPendingDeletes() {
+    pendingDeleteReads++;
+    return super.getPendingDeletes();
+  }
 }

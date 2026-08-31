@@ -250,11 +250,12 @@ void main() {
 
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
+      await syncService.idle;
 
       expect(find.text('Bookmark deleted'), findsOneWidget);
     });
 
-    testWidgets('offline delete removes the row and shows the queued message', (tester) async {
+    testWidgets('offline delete removes the row and queues the delete', (tester) async {
       for (final b in sampleBookmarks) {
         await repo.upsert(b);
       }
@@ -277,8 +278,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
+      await offlineSync.idle;
 
-      expect(find.text('Deleted — will sync when online'), findsOneWidget);
+      expect(find.text('Bookmark deleted'), findsOneWidget);
       expect(find.text('Flutter'), findsNothing);
       expect(await repo.getPendingDeletes(), ['1']);
     });
@@ -528,6 +530,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
+      await syncService.idle;
 
       // Open stats
       await tester.tap(find.text('Florilegio'));
