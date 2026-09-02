@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "hono": "^4.13.4"
+    "hono": "^4.13.5"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
