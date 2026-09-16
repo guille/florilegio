@@ -3,15 +3,15 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "hono": "^4.13.5"
+    "hono": "^4.13.7"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "oxfmt": "^0.66.0",
-    "oxlint": "^1.81.0",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.130.0"
   },
   "packageManager": "pnpm@11.18.0"
 }
