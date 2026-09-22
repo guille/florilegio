@@ -26,13 +26,16 @@ run         = "flutter run --pid-file=.flutter.pid"
 description = "Runs the frontend (Android)"
 
 [tasks."run:web"]
-run         = "flutter run -d web-server --no-web-resources-cdn --wasm"
+run         = "flutter run -d web-server --no-web-resources-cdn --wasm --web-port 38951"
 description = "Runs the frontend (web)"
 
 [tasks."build:web"]
 sources = ["pubspec.*", "assets/**/*", "lib/**/*.dart", "web/**/*"]
 outputs = ["build/web-dist/**/*"]
 run     = "flutter build web --release --no-web-resources-cdn -o build/web-dist"
+
+[tasks."open:web"]
+run = "timeout 60 sh -c 'until curl -fsS --max-time 5 -o /dev/null http://localhost:38951; do sleep 1; done' && xdg-open http://localhost:38951"
 
 [tasks."deploy:web"]
 depends     = "build:web"

@@ -34,13 +34,7 @@ android = "android --no-metrics"
 
 [tasks."setup:android"]
 hide = true
-run  = [
-  "android",
-  "android sdk install build-tools/37.0.0",
-  "android sdk install platform-tools",
-  "android sdk install cmdline-tools",
-  "flutter doctor --android-licenses"
-]
+run  = ["android", "android sdk install build-tools/37.0.0", "android sdk install platform-tools", "android sdk install cmdline-tools", "flutter doctor --android-licenses"]
 
 [tasks."setup:flutter"]
 hide = true
@@ -54,3 +48,6 @@ run  = [
 hide = true
 dir  = "worker"
 run  = ["pnpm install", "mise run //worker:cf-typegen"]
+
+[tasks.dev]
+run = ["mise run //worker:dev ::: //client:run:web ::: //client:open:web"]
