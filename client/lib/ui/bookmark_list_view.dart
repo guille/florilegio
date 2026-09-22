@@ -277,6 +277,56 @@ class _BookmarkListViewState extends State<BookmarkListView> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bookmark deleted')));
   }
 
+  Future<void> _confirmBulkDelete() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${ids.length} bookmark${ids.length == 1 ? '' : 's'}?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _deleteBookmarks(ids);
+    }
+  }
+
+  Future<void> _deleteBookmarks(List<String> ids) async {
+    final result = await widget.syncService.deleteBookmarks(ids);
+    if (!mounted) return;
+    // As in _deleteBookmark: the deletes already happened, so the chip refresh
+    // is best-effort.
+    var allTags = _allTags;
+    try {
+      allTags = await widget.repository.getAllTags();
+    } catch (_) {}
+    if (!mounted) return;
+    final deleted = result.deleted.toSet();
+    setState(() {
+      _bookmarks.removeWhere((b) => deleted.contains(b.id));
+      // Whatever failed stays selected, so a retry doesn't need reselecting.
+      _selectedIds.removeAll(deleted);
+      _allTags = allTags;
+    });
+
+    final failed = result.failures.length;
+    final msg = switch ((deleted.length, failed)) {
+      (0, _) => 'Failed to delete: ${_friendlyError(result.failures.values.first)}',
+      (final n, 0) => 'Deleted $n bookmark${n == 1 ? '' : 's'}',
+      (final n, _) => 'Deleted $n bookmark${n == 1 ? '' : 's'}, $failed failed',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   void _copyUrl(Bookmark bookmark) {
     Clipboard.setData(ClipboardData(text: bookmark.url));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -443,6 +493,11 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                     icon: const Icon(Icons.label),
                     tooltip: 'Edit tags',
                     onPressed: _showBulkTagDialog,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    tooltip: 'Delete',
+                    onPressed: _confirmBulkDelete,
                   ),
                 ],
               )

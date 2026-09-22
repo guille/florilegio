@@ -65,6 +65,16 @@ class DeleteResult {
   DeleteResult.failed(this.error);
 }
 
+/// Result of deleting several bookmarks at once. Failures are per-bookmark: the
+/// ids in [failures] are still visible locally, the ones in [deleted] are gone
+/// and queued for the server.
+class BulkDeleteResult {
+  final List<String> deleted;
+  final Map<String, Object> failures;
+
+  BulkDeleteResult({required this.deleted, required this.failures});
+}
+
 class SyncService {
   final BookmarkRepository _repository;
   final BookmarkApiClient _apiClient;
@@ -281,17 +291,39 @@ class SyncService {
   ///
   /// Never throws: every failure mode is reported through [DeleteResult].
   Future<DeleteResult> deleteBookmark(String id) async {
+    final result = await deleteBookmarks([id]);
+    final error = result.failures[id];
+    return error == null ? DeleteResult.ok() : DeleteResult.failed(error);
+  }
+
+  /// Delete several bookmarks, then flush them to the server in one pass.
+  /// A bookmark that fails to persist is isolated: it stays visible while the
+  /// rest go through.
+  ///
+  /// Never throws: every failure mode is reported through [BulkDeleteResult].
+  Future<BulkDeleteResult> deleteBookmarks(Iterable<String> ids) async {
+    final deleted = <String>[];
+    final failures = <String, Object>{};
+    for (final id in ids) {
+      try {
+        // Enqueue before removing the row: if the enqueue fails the bookmark
+        // must stay visible, not vanish with nothing left to sync.
+        await _repository.addPendingDelete(id);
+        await _repository.delete(id);
+        deleted.add(id);
+      } catch (e) {
+        failures[id] = e;
+      }
+    }
+    if (deleted.isEmpty) return BulkDeleteResult(deleted: deleted, failures: failures);
     try {
-      // Enqueue before removing the row: if the enqueue fails the bookmark
-      // must stay visible, not vanish with nothing left to sync.
-      await _repository.addPendingDelete(id);
-      await _repository.delete(id);
-      await _repository.incrementDeleteCount();
-    } catch (e) {
-      return DeleteResult.failed(e);
+      await _repository.incrementDeleteCount(deleted.length);
+    } catch (_) {
+      // The rows are gone and queued by now, so a lost stat bump is not worth
+      // reporting the delete itself as failed.
     }
     _kickFlush();
-    return DeleteResult.ok();
+    return BulkDeleteResult(deleted: deleted, failures: failures);
   }
 
   /// Best-effort title fetch. Returns null on any failure.

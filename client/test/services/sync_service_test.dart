@@ -774,6 +774,75 @@ void main() {
       expect(requests, 0);
     });
 
+    test('deleteBookmarks removes every id and flushes them in one pass', () async {
+      for (final id in ['d1', 'd2', 'd3']) {
+        await repo.upsert(makeBookmark(id));
+      }
+      final deleted = <String>[];
+      final client = http_testing.MockClient((request) async {
+        expect(request.method, 'DELETE');
+        deleted.add(request.url.pathSegments.last);
+        return http.Response('', 204);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmarks(['d1', 'd2', 'd3']);
+      expect(result.deleted, ['d1', 'd2', 'd3']);
+      expect(result.failures, isEmpty);
+      expect(await repo.getAll(), isEmpty);
+      expect(await repo.getDeleteCount(), 3);
+      await sync.idle;
+      expect(deleted, ['d1', 'd2', 'd3']);
+      expect(await repo.getPendingDeletes(), isEmpty);
+    });
+
+    test('deleteBookmarks keeps the rows it could not enqueue', () async {
+      final throwingRepo = ThrowingDeleteQueueRepository(failFor: {'d2'});
+      for (final id in ['d1', 'd2', 'd3']) {
+        await throwingRepo.upsert(makeBookmark(id));
+      }
+      final client = http_testing.MockClient((request) async => http.Response('', 204));
+      final sync = SyncService(repository: throwingRepo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmarks(['d1', 'd2', 'd3']);
+      expect(result.deleted, ['d1', 'd3']);
+      expect(result.failures.keys, ['d2']);
+      expect(await throwingRepo.getById('d2'), isNotNull);
+      // The stat counts what actually went, not what was asked for.
+      expect(await throwingRepo.getDeleteCount(), 2);
+      await sync.idle;
+    });
+
+    test('deleteBookmarks queues when the server is unreachable', () async {
+      await repo.upsert(makeBookmark('d1'));
+      await repo.upsert(makeBookmark('d2'));
+      final client = http_testing.MockClient(
+        (request) async => throw http.ClientException('Connection refused', request.url),
+      );
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmarks(['d1', 'd2']);
+      expect(result.failures, isEmpty);
+      await sync.idle;
+      expect(await repo.getPendingDeletes(), ['d1', 'd2']);
+    });
+
+    test('deleteBookmarks on an empty selection touches nothing', () async {
+      var requests = 0;
+      final client = http_testing.MockClient((request) async {
+        requests++;
+        return http.Response('', 204);
+      });
+      final sync = SyncService(repository: repo, apiClient: makeApi(client));
+
+      final result = await sync.deleteBookmarks([]);
+      expect(result.deleted, isEmpty);
+      expect(result.failures, isEmpty);
+      expect(await repo.getDeleteCount(), 0);
+      await sync.idle;
+      expect(requests, 0);
+    });
+
     test('sync flushes a queued delete without bumping the counter again', () async {
       await repo.addPendingDelete('d1');
       await repo.incrementDeleteCount();

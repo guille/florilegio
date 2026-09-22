@@ -777,5 +777,91 @@ void main() {
       expect(find.text('2 selected'), findsNothing);
       expect(find.byType(FloatingActionButton), findsOneWidget);
     });
+
+    testWidgets('bulk delete removes the selected bookmarks', (tester) async {
+      await tester.pumpWidget(buildWidget());
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Flutter'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dart Language'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete 2 bookmarks?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deleted 2 bookmarks'), findsOneWidget);
+      expect(find.text('Flutter'), findsNothing);
+      expect(find.text('Dart Language'), findsNothing);
+      expect(find.text('Interesting Article'), findsOneWidget);
+      // Selection mode exits once everything went through.
+      expect(find.text('2 selected'), findsNothing);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(await repo.getDeleteCount(), 2);
+    });
+
+    testWidgets('bulk delete can be cancelled', (tester) async {
+      await tester.pumpWidget(buildWidget());
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Flutter'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Flutter'), findsOneWidget);
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(await repo.getDeleteCount(), 0);
+    });
+
+    testWidgets('bulk delete singular wording for one bookmark', (tester) async {
+      await tester.pumpWidget(buildWidget());
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Flutter'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete 1 bookmark?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deleted 1 bookmark'), findsOneWidget);
+    });
+
+    testWidgets('a bookmark that fails to delete stays selected', (tester) async {
+      repo = ThrowingDeleteQueueRepository(failFor: {'2'});
+      final client = http_testing.MockClient((request) async {
+        if (request.method == 'GET') return http.Response(jsonEncode(sampleJson()), 200);
+        return http.Response('', 204);
+      });
+      await tester.pumpWidget(buildWidget(overrideSyncService: makeSyncService(client)));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Flutter'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dart Language'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deleted 1 bookmark, 1 failed'), findsOneWidget);
+      expect(find.text('Flutter'), findsNothing);
+      // The failure keeps its row and its selection, ready for a retry.
+      expect(find.text('Dart Language'), findsOneWidget);
+      expect(find.text('1 selected'), findsOneWidget);
+    });
   });
 }
