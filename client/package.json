@@ -6,7 +6,7 @@
 		"deploy": "wrangler pages deploy"
 	},
 	"devDependencies": {
-		"wrangler": "^4.130.0"
+		"wrangler": "^4.132.0"
 	},
 	"packageManager": "pnpm@11.18.0"
 }
