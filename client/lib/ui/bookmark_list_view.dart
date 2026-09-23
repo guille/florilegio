@@ -231,7 +231,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
     }
   }
 
-  Future<void> _confirmDelete(Bookmark bookmark) async {
+  Future<bool> _confirmDelete(Bookmark bookmark) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -249,32 +249,39 @@ class _BookmarkListViewState extends State<BookmarkListView> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await _deleteBookmark(bookmark);
+    return confirmed == true;
+  }
+
+  Future<void> _confirmAndDeleteFromMenu(Bookmark bookmark) async {
+    if (await _confirmDelete(bookmark) && await _deleteBookmark(bookmark) && mounted) {
+      _removeRow(bookmark);
     }
   }
 
-  Future<void> _deleteBookmark(Bookmark bookmark) async {
+  /// Leaves the row in place: callers remove it, so a swipe can let
+  /// [Dismissible] animate it out first.
+  Future<bool> _deleteBookmark(Bookmark bookmark) async {
     final result = await widget.syncService.deleteBookmark(bookmark.id);
-    if (!mounted) return;
+    if (!mounted) return result.error == null;
     if (result.error != null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to delete: ${_friendlyError(result.error!)}')));
-      return;
+      return false;
     }
-    // The delete already happened, so the row goes away and the chip refresh
-    // is best-effort.
+    // The delete already happened, so the chip refresh is best-effort.
     var allTags = _allTags;
     try {
       allTags = await widget.repository.getAllTags();
     } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      _bookmarks.removeWhere((b) => b.id == bookmark.id);
-      _allTags = allTags;
-    });
+    if (!mounted) return true;
+    setState(() => _allTags = allTags);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bookmark deleted')));
+    return true;
+  }
+
+  void _removeRow(Bookmark bookmark) {
+    setState(() => _bookmarks.removeWhere((b) => b.id == bookmark.id));
   }
 
   Future<void> _confirmBulkDelete() async {
@@ -667,7 +674,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                                 : () => _openUrl(bookmark.url),
                             onLongPress: () => _toggleSelection(bookmark.id),
                             onEdit: () => _showEditDialog(bookmark),
-                            onDelete: () => _confirmDelete(bookmark),
+                            onDelete: () => _confirmAndDeleteFromMenu(bookmark),
                             onSelect: () => _toggleSelection(bookmark.id),
                             onCopy: () => _copyUrl(bookmark),
                           );
@@ -676,30 +683,33 @@ class _BookmarkListViewState extends State<BookmarkListView> {
                               constraints: const BoxConstraints(maxWidth: 600),
                               child: _selectionMode
                                   ? card
-                                  : Dismissible(
-                                      key: ValueKey(bookmark.id),
-                                      direction: DismissDirection.startToEnd,
-                                      confirmDismiss: (_) async {
-                                        unawaited(_confirmDelete(bookmark));
-                                        return false; // Dialog handles the actual delete
-                                      },
-                                      background: Container(
-                                        alignment: Alignment.centerRight,
-                                        padding: const EdgeInsets.only(right: 20),
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 4,
+                                  // Keeps the sliding card inside the column on wide screens.
+                                  : ClipRect(
+                                      child: Dismissible(
+                                        key: ValueKey(bookmark.id),
+                                        direction: DismissDirection.startToEnd,
+                                        confirmDismiss: (_) async =>
+                                            await _confirmDelete(bookmark) &&
+                                            await _deleteBookmark(bookmark),
+                                        onDismissed: (_) => _removeRow(bookmark),
+                                        background: Container(
+                                          alignment: Alignment.centerRight,
+                                          padding: const EdgeInsets.only(right: 20),
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.errorContainer,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Icon(
+                                            Icons.delete,
+                                            color: Theme.of(context).colorScheme.onErrorContainer,
+                                          ),
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context).colorScheme.errorContainer,
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Icon(
-                                          Icons.delete,
-                                          color: Theme.of(context).colorScheme.onErrorContainer,
-                                        ),
+                                        child: card,
                                       ),
-                                      child: card,
                                     ),
                             ),
                           );

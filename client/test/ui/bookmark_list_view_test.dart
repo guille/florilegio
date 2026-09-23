@@ -313,6 +313,23 @@ void main() {
       expect(find.text('Flutter'), findsOneWidget);
     });
 
+    testWidgets('cancelling a swipe delete brings the row back', (tester) async {
+      await tester.pumpWidget(buildWidget());
+      await tester.pumpAndSettle();
+
+      final restingX = tester.getTopLeft(find.text('Flutter')).dx;
+      await tester.drag(find.byType(Dismissible).first, const Offset(500, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete bookmark?'), findsOneWidget);
+      // The row stays swiped away while the dialog is up.
+      expect(tester.getTopLeft(find.text('Flutter')).dx, greaterThan(restingX + 100));
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.text('Flutter')).dx, restingX);
+    });
+
     testWidgets('popup menu shows Edit and Copy URL', (tester) async {
       await tester.pumpWidget(buildWidget());
       await tester.pumpAndSettle();
