@@ -35,8 +35,8 @@
   }
 
   .monogram {
-    background: oklch(0.9 0.05 var(--hue));
-    color: oklch(0.4 0.09 var(--hue));
+    background: oklch(var(--mono-bg-l) 0.05 var(--hue));
+    color: oklch(var(--mono-fg-l) 0.09 var(--hue));
     box-shadow: none;
     font-weight: 700;
     font-size: 0.95rem;

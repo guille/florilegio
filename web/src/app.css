@@ -32,6 +32,8 @@
   --scrim: rgb(0 0 0 / 0.32);
   --tile: #ffffff;
   --tile-ring: rgb(0 0 0 / 0.08);
+  --mono-bg-l: 0.9;
+  --mono-fg-l: 0.4;
   /* Raised surfaces that group content: the list, settings sections. */
   --panel: var(--surface-bright);
   --hairline: color-mix(in srgb, var(--outline-variant) 55%, transparent);
@@ -69,8 +71,10 @@
     --error-container: #93000a;
     --on-error-container: #ffdad6;
     --scrim: rgb(0 0 0 / 0.56);
-    --tile: #e3e6ea;
+    --tile: transparent;
     --tile-ring: transparent;
+    --mono-bg-l: 0.32;
+    --mono-fg-l: 0.85;
     --panel: var(--surface-container-low);
     --mark: #6b5400;
   }
@@ -99,8 +103,10 @@
   --error-container: #93000a;
   --on-error-container: #ffdad6;
   --scrim: rgb(0 0 0 / 0.56);
-  --tile: #e3e6ea;
+  --tile: transparent;
   --tile-ring: transparent;
+  --mono-bg-l: 0.32;
+  --mono-fg-l: 0.85;
   --panel: var(--surface-container-low);
   --mark: #6b5400;
 }
