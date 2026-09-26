@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#MISE description="Render every raster icon from icon.svg"
+#MISE sources=["icon.svg", "mise-tasks/icons"]
+#MISE outputs=["web/public/favicon.png", "web/public/icons/*.png", "docs/favicon.png", "docs/icon.webp", "ff-extension/src/icons/*.png", "client/assets/icon.png", "client/assets/*/icon.png", "client/android/app/src/main/res/mipmap-*/*.png"]
+set -euo pipefail
+
+if ! command -v magick >/dev/null; then
+  echo "icons: ImageMagick 7 (magick) is required; install it with your system package manager" >&2
+  exit 1
+fi
+# Without librsvg, ImageMagick falls back to its own SVG renderer, which draws
+# noticeably worse.
+if ! magick -list format | grep -q '^ *RSVG'; then
+  echo "icons: ImageMagick lacks librsvg support; install the librsvg delegate (e.g. ImageMagick's librsvg package)" >&2
+  exit 1
+fi
+
+SVG=icon.svg
+# The PWA manifest's background_color.
+BG="#f7f9fd"
+
+# The whole viewBox at size×size, transparent, drawn straight from the vector.
+render() {
+  local size=$1 out=$2
+  mkdir -p "$(dirname "$out")"
+  # librsvg's base is 96 DPI, and the viewBox is 1024 wide.
+  magick -background none -density "$(awk "BEGIN { print 96 * $size / 1024 }")" "RSVG:$SVG" \
+    -strip -depth 8 -define png:compression-level=9 "$out"
+  [[ $(magick identify -format '%wx%h' "$out") == "${size}x${size}" ]] || {
+    echo "$out: expected ${size}x${size}" >&2
+    exit 1
+  }
+}
+
+# The artwork cropped to its own bounds, scaled so its bounding box fits a
+# circle of diameter `ratio`×size, centered on a size×size canvas. Launchers
+# only guarantee a centered circle survives their masks.
+fit_circle() {
+  local size=$1 ratio=$2 bg=$3 out=$4 art
+  mkdir -p "$(dirname "$out")"
+  art=$(mktemp --suffix=.png)
+  magick -background none -density "$(awk "BEGIN { print 96 * $size * 4 / 1024 }")" "RSVG:$SVG" -trim +repage "$art"
+  local w h
+  read -r w h <<<"$(magick identify -format '%w %h' "$art")"
+  local fit
+  fit=$(awk "BEGIN { printf \"%d\", $w * $ratio * $size / sqrt($w * $w + $h * $h) }")
+  magick "$art" -filter Lanczos -resize "${fit}x" -background "$bg" -gravity center -extent "${size}x${size}" \
+    -strip -depth 8 -define png:compression-level=9 "$out"
+  rm -f "$art"
+}
+
+# ── Web ──────────────────────────────────────────────────────────────────────
+render 64 web/public/favicon.png
+render 192 web/public/icons/Icon-192.png
+render 512 web/public/icons/Icon-512.png
+# Maskable safe zone: a centered circle of radius 40%.
+fit_circle 192 0.8 "$BG" web/public/icons/Icon-maskable-192.png
+fit_circle 512 0.8 "$BG" web/public/icons/Icon-maskable-512.png
+# iOS fills transparency with black and rounds the corners itself.
+fit_circle 180 0.9 "$BG" web/public/icons/apple-touch-icon.png
+
+# ── Docs ─────────────────────────────────────────────────────────────────────
+render 64 docs/favicon.png
+tmp=$(mktemp --suffix=.png)
+render 128 "$tmp"
+magick "$tmp" -define webp:lossless=true -define webp:method=6 docs/icon.webp
+rm -f "$tmp"
+
+# ── Firefox extension ────────────────────────────────────────────────────────
+for size in 16 32 48 96 128; do
+  render "$size" "ff-extension/src/icons/icon-$size.png"
+done
+
+# ── Flutter app: in-app logo, drawn at 28×28 logical pixels ──────────────────
+render 28 client/assets/icon.png
+render 56 client/assets/2.0x/icon.png
+render 84 client/assets/3.0x/icon.png
+
+# ── Android launcher ─────────────────────────────────────────────────────────
+res=client/android/app/src/main/res
+for density in mdpi:1 hdpi:1.5 xhdpi:2 xxhdpi:3 xxxhdpi:4; do
+  name=${density%:*}
+  scale=${density#*:}
+  # Legacy icon (API < 26): 48dp.
+  render "$(awk "BEGIN { print 48 * $scale }")" "$res/mipmap-$name/ic_launcher.png"
+  # Adaptive foreground: a 108dp layer whose masks keep a 66dp circle.
+  fit_circle "$(awk "BEGIN { print 108 * $scale }")" "$(awk 'BEGIN { print 66 / 108 }')" none \
+    "$res/mipmap-$name/ic_launcher_foreground.png"
+done
