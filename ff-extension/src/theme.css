@@ -1,0 +1,35 @@
+/* Dark values follow the web app's Material palette. */
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --muted: #555;
+  --faint: #888;
+  --border: #d1d5db;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-disabled: #93c5fd;
+  --on-accent: #fff;
+  --on-accent-disabled: #fff;
+  --focus-ring: rgb(59 130 246 / 0.15);
+  --success: #16a34a;
+  --warn: #ca8a04;
+  --error: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e0e2e8;
+    --muted: #c1c7ce;
+    --faint: #8b9198;
+    --border: #41474d;
+    --accent: #99cbf6;
+    --accent-hover: #cde5ff;
+    --accent-disabled: #394857;
+    --on-accent: #003350;
+    --on-accent-disabled: #8b9198;
+    --focus-ring: rgb(153 203 246 / 0.25);
+    --success: #4ade80;
+    --warn: #facc15;
+    --error: #ffb4ab;
+  }
+}

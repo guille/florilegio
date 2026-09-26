@@ -1,2 +1,3 @@
 [tasks.package]
-run = "zip -r addon.xpi src/"
+dir = "src"
+run = "zip -FS -r ../addon.xpi ."

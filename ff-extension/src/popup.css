@@ -9,7 +9,7 @@ body {
   font-size: 13px;
   width: 300px;
   padding: 12px;
-  color: #1a1a1a;
+  color: var(--fg);
 }
 
 .hidden {
@@ -28,21 +28,21 @@ body {
 }
 
 .status.saved {
-  color: #16a34a;
+  color: var(--success);
 }
 
 .status.duplicate {
-  color: #ca8a04;
+  color: var(--warn);
 }
 
 .status.error {
-  color: #dc2626;
+  color: var(--error);
 }
 
 label {
   font-size: 11px;
   font-weight: 600;
-  color: #555;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -50,13 +50,13 @@ label {
 .hint {
   font-weight: 400;
   text-transform: none;
-  color: #888;
+  color: var(--faint);
 }
 
 input[type="text"] {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 13px;
   font-family: inherit;
@@ -64,14 +64,14 @@ input[type="text"] {
 
 input[type="text"]:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 button {
   padding: 6px 12px;
-  background: #2563eb;
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   border: none;
   border-radius: 4px;
   font-size: 13px;
@@ -81,10 +81,11 @@ button {
 }
 
 button:hover {
-  background: #1d4ed8;
+  background: var(--accent-hover);
 }
 
 button:disabled {
-  background: #93c5fd;
+  background: var(--accent-disabled);
+  color: var(--on-accent-disabled);
   cursor: default;
 }
