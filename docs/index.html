@@ -6,12 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>florilegio — a personal read-it-later app</title>
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
   <meta name="description"
-    content="florilegio is a personal read-it-later app, in the spirit of Pocket or Raindrop. Flutter for Android and the web, Firefox extension, Hono backend on Workers + D1.">
+    content="florilegio is a personal read-it-later app, in the spirit of Pocket or Raindrop. Svelte on the web, Flutter for Android, Firefox extension, Hono backend on Workers + D1.">
   <meta property="og:title" content="florilegio — a personal read-it-later app">
   <meta property="og:description"
-    content="A personal read-it-later app, in the spirit of Pocket or Raindrop. Flutter for Android and web, Firefox extension, Hono backend on Workers + D1.">
+    content="A personal read-it-later app, in the spirit of Pocket or Raindrop. Svelte on the web, Flutter for Android, Firefox extension, Hono backend on Workers + D1.">
   <meta property="og:image" content="https://florilegio.guillerg.dev/showcase.jpg">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://florilegio.guillerg.dev">
@@ -56,13 +56,13 @@
       </p>
 
       <aside class="margin-note">
-        Hono on Workers, SQLite on D1, Flutter on Pages.
+        Hono on Workers, SQLite on D1, Svelte on Pages, Flutter on Android.
       </aside>
       <p>
         What it does is small and finite. You save a URL (from the Firefox extension, or by sharing or pasting it into
         the app)
         and the server fetches the page's title and metadata. You read what you saved on Android or in a browser, from
-        the same list, with the same interface. If you came from Raindrop.io, a script imports your export. The database
+        the same list. If you came from Raindrop.io, a script imports your export. The database
         underneath is plain SQLite; nothing is locked in.
       </p>
 
@@ -87,7 +87,7 @@
       <ol class="steps">
         <li>Clone the repository and run <code>mise install</code>.</li>
         <li>Deploy the Worker to your Cloudflare account, with a generated token as a secret.</li>
-        <li>Build the Flutter client and point it at your Worker's URL.</li>
+        <li>Deploy the web app to Cloudflare Pages and point it at your Worker's URL.</li>
         <li>Optionally, install the Firefox extension for one-click saves.</li>
       </ol>
       <p class="readmore">Full instructions are in the <a href="https://github.com/guille/florilegio">README</a>.</p>

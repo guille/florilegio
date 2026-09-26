@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:florilegio/data/api_client.dart';
-import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/main.dart' show buildTheme;
 import 'package:florilegio/services/sync_service.dart';
@@ -11,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 import 'package:material_ui/material_ui.dart';
 
+import '../support/in_memory_repository.dart';
 import '../support/throwing_delete_queue_repository.dart';
 
 void main() {

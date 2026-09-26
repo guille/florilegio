@@ -37,8 +37,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-.wrangler/
-node_modules/
-
 # signing key
 android/signing/*.keystore

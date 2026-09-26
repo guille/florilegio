@@ -1,0 +1,21 @@
+{
+  "name": "florilegio-web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lucide/svelte": "^1.46.0",
+    "hono": "^4.13.8"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.135.0"
+  },
+  "packageManager": "pnpm@12.5.1"
+}

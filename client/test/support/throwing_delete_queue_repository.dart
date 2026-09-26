@@ -1,4 +1,4 @@
-import 'package:florilegio/data/in_memory_repository.dart';
+import 'in_memory_repository.dart';
 
 /// Repository whose delete queue fails, for exercising the enqueue-failure
 /// path of SyncService.deleteBookmark(s).

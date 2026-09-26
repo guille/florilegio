@@ -1,5 +1,4 @@
 import 'package:florilegio/data/api_client.dart';
-import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/data/sqlite_repository.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/settings_service.dart';
@@ -10,7 +9,6 @@ import 'package:florilegio/ui/bookmark_list_view.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:florilegio/ui/share_save_overlay.dart';
 import 'package:florilegio/ui/system_overlay_style.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -49,15 +47,10 @@ ThemeData buildTheme(Brightness brightness) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Parallelize independent async init work.
-  final prefsFuture = SharedPreferences.getInstance();
-  final repoFuture = kIsWeb
-      ? Future.value(InMemoryBookmarkRepository() as BookmarkRepository)
-      : SqliteBookmarkRepository.open();
-
-  final results = await Future.wait([prefsFuture, repoFuture]);
-  final prefs = results[0] as SharedPreferences;
-  final repository = results[1] as BookmarkRepository;
+  final (prefs, repository) = await (
+    SharedPreferences.getInstance(),
+    SqliteBookmarkRepository.open(),
+  ).wait;
   final settings = await SettingsService.create(prefs);
 
   runApp(FlorilegioApp(settings: settings, repository: repository));
@@ -77,7 +70,7 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
   BookmarkApiClient? _apiClient;
   SyncService? _syncService;
   final TitleFetcher _titleFetcher = TitleFetcher();
-  late final ShareIntentHandler _shareHandler;
+  final ShareIntentHandler _shareHandler = ShareIntentHandler();
 
   /// URL received via share intent, pending save.
   String? _pendingShareUrl;
@@ -87,12 +80,9 @@ class _FlorilegioAppState extends State<FlorilegioApp> {
     super.initState();
     widget.settings.addListener(_onSettingsChanged);
     _rebuildServices();
-    _shareHandler = createShareIntentHandler();
-    _shareHandler.listen(
-      onShare: (url) {
-        if (mounted) setState(() => _pendingShareUrl = url);
-      },
-    );
+    _shareHandler.listen((url) {
+      if (mounted) setState(() => _pendingShareUrl = url);
+    });
   }
 
   // Settings values the services were built from; theme-only changes

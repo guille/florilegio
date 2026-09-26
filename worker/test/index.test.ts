@@ -23,6 +23,14 @@ async function createBookmark(data: Record<string, unknown>) {
   });
 }
 
+async function patchBookmark(id: string, data: Record<string, unknown>) {
+  return exports.default.fetch(`http://localhost/bookmarks/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Florilegio API", () => {
@@ -167,6 +175,44 @@ describe("Florilegio API", () => {
     const updated = await res.json<any>();
     expect(updated.title).toBe("New");
     expect(updated.tags).toBe("a,b");
+  });
+
+  it("update leaves fields it wasn't sent alone", async () => {
+    const bk = await (
+      await createBookmark({ url: "https://example.com", title: "Keep" })
+    ).json<any>();
+    const res = await patchBookmark(bk.id, { tags: ["a"] });
+    expect(res.status).toBe(200);
+    expect((await res.json<any>()).title).toBe("Keep");
+  });
+
+  it("update rejects a wrongly typed field instead of clearing it", async () => {
+    const bk = await (
+      await createBookmark({ url: "https://example.com", title: "Keep" })
+    ).json<any>();
+    expect((await patchBookmark(bk.id, { title: 42 })).status).toBe(400);
+    expect((await patchBookmark(bk.id, { tags: [1, 2] })).status).toBe(400);
+    const res = await exports.default.fetch(`http://localhost/bookmarks/${bk.id}`, {
+      headers: auth,
+    });
+    expect((await res.json<any>()).title).toBe("Keep");
+  });
+
+  it("rejects non-http(s) urls", async () => {
+    const res = await createBookmark({ url: "javascript:alert(1)" });
+    expect(res.status).toBe(400);
+    expect((await res.json<any>()).error).toBe("A valid http(s) url is required");
+  });
+
+  it("rejects a body that isn't a JSON object", async () => {
+    for (const body of ["null", "[]", '"https://example.com"']) {
+      const res = await exports.default.fetch("http://localhost/bookmarks", {
+        method: "POST",
+        headers: jsonHeaders,
+        body,
+      });
+      expect(res.status).toBe(400);
+    }
   });
 
   it("deletes a bookmark", async () => {

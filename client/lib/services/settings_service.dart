@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,9 +8,7 @@ class SettingsService extends ChangeNotifier {
   static const _keyThemeMode = 'theme_mode';
 
   final SharedPreferences _prefs;
-  // On mobile, use encrypted storage for the token.
-  // On web, flutter_secure_storage falls back to localStorage anyway,
-  // so we just use SharedPreferences there.
+  // Null only in tests, where the token lives in SharedPreferences.
   final FlutterSecureStorage? _secure;
 
   String _cachedToken = '';
@@ -20,15 +17,9 @@ class SettingsService extends ChangeNotifier {
 
   /// Initialize the service, loading the token from secure storage.
   static Future<SettingsService> create(SharedPreferences prefs) async {
-    if (kIsWeb) {
-      // On web, store token in SharedPreferences (no better option).
-      final token = prefs.getString(_keyToken) ?? '';
-      return SettingsService._(prefs, null, token);
-    } else {
-      const secure = FlutterSecureStorage(aOptions: AndroidOptions.defaultOptions);
-      final token = await secure.read(key: _keyToken) ?? '';
-      return SettingsService._(prefs, secure, token);
-    }
+    const secure = FlutterSecureStorage(aOptions: AndroidOptions.defaultOptions);
+    final token = await secure.read(key: _keyToken) ?? '';
+    return SettingsService._(prefs, secure, token);
   }
 
   /// For tests — uses SharedPreferences only, no secure storage.

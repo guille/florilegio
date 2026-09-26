@@ -50,4 +50,4 @@ dir  = "worker"
 run  = ["pnpm install", "mise run //worker:cf-typegen"]
 
 [tasks.dev]
-run = ["mise run //worker:dev ::: //client:run:web ::: //client:open:web"]
+run = ["mise run //worker:dev ::: //web:dev --open"]

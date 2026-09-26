@@ -6,7 +6,7 @@ import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/sync_service.dart';
 import 'package:florilegio/ui/bulk_tag_dialog.dart';
 import 'package:florilegio/ui/tag_editor.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -612,7 +612,7 @@ class _BookmarkListViewState extends State<BookmarkListView> {
               // the content. Left to fade, the thumb has to be summoned by the
               // very scrolling it exists to replace, so on a list long enough
               // to drag through it stays put.
-              thumbVisibility: kIsWeb || _bookmarks.length >= _kDragScrollThreshold,
+              thumbVisibility: _bookmarks.length >= _kDragScrollThreshold,
               child: RefreshIndicator(
                 onRefresh: () => _loadAndSync(force: true),
                 child: CustomScrollView(

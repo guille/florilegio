@@ -45,3 +45,33 @@ jobs:
       - run: pnpm oxfmt --check
       - run: pnpm oxlint
       - run: pnpm vitest run
+
+  web:
+    name: Web tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: latest
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: |
+            web/pnpm-lock.yaml
+            worker/pnpm-lock.yaml
+      # svelte-check resolves the RPC client's types from the worker's emitted declarations.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: worker
+      - run: pnpm tsc --declaration --emitDeclarationOnly --noEmit false --outDir .types
+        working-directory: worker
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm svelte-check --tsconfig ./tsconfig.json
+      - run: pnpm oxfmt --check
+      - run: pnpm oxlint
+      - run: pnpm vitest run
+      - run: pnpm vite build

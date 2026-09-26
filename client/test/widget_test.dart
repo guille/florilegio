@@ -1,9 +1,10 @@
-import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/services/settings_service.dart';
 import 'package:florilegio/ui/settings_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/in_memory_repository.dart';
 
 void main() {
   group('SettingsView', () {

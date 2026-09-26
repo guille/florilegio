@@ -1,0 +1,43 @@
+[env._]
+path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.dev]
+run = "vite"
+
+[tasks.build]
+depends = ["check", "lint", "test"]
+sources = [
+  "index.html",
+  "src/**/*",
+  "public/**/*",
+  "vite.config.ts",
+  "svelte.config.js",
+  "package.json",
+  "pnpm-lock.yaml",
+  "tsconfig.json",
+]
+outputs = ["dist/**/*"]
+run     = "vite build"
+
+[tasks.deploy]
+depends = ["build"]
+run     = "wrangler pages deploy"
+
+[tasks.preview]
+run = "vite preview"
+
+[tasks.check]
+depends = ["//worker:types"]
+run     = "svelte-check --tsconfig ./tsconfig.json"
+
+[tasks.test]
+run = "vitest run"
+
+[tasks.lint]
+run = "oxlint"
+
+[tasks.fmt]
+run = "oxfmt"
+
+[deps.pnpm]
+auto = true

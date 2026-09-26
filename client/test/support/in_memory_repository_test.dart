@@ -1,7 +1,8 @@
-import 'package:florilegio/data/in_memory_repository.dart';
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'in_memory_repository.dart';
 
 void main() {
   late InMemoryBookmarkRepository repo;

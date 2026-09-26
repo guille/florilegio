@@ -8,7 +8,8 @@ A personal read-it-later app. Much like Pocket (RIP) or Raindrop.io, but you run
 
 ## Features
 
-- **Flutter client** for Android and the web — one codebase, both platforms.
+- **Svelte web app**, installable as a PWA.
+- **Flutter app** for Android.
 - **Firefox extension** to save the current tab with one click.
 - **Hono backend** on Cloudflare Workers with SQLite (D1) for storage.
 - **Raindrop.io importer** to bring your existing bookmarks across.
@@ -66,8 +67,8 @@ Note the worker URL (e.g. `https://florilegio.<your-subdomain>.workers.dev`).
 ### 5. Build and deploy the web client
 
 ```sh
-cd ../client
-mise run deploy:web
+cd ../web
+mise run deploy
 ```
 
 The first run will prompt you to create a Cloudflare Pages project. Pick a name and accept the defaults. After deploy, note the Pages URL (e.g. `https://florilegio-xyz.pages.dev`).
@@ -109,7 +110,8 @@ Structured as a monorepo.
 | Path           | What it is                                                          |
 | -------------- | ------------------------------------------------------------------- |
 | `worker/`      | Hono API on Cloudflare Workers, SQLite (D1) storage. See [`worker/README.md`](worker/README.md). |
-| `client/`      | Flutter app targeting Android and the web.                          |
+| `web/`         | Svelte web app, deployed to Cloudflare Pages.                       |
+| `client/`      | Flutter app for Android.                                            |
 | `ff-extension/`| Firefox extension to save the current tab.                          |
 | `support/`     | Scripts, including a Raindrop.io export → Florilegio JSON converter.|
 

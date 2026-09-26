@@ -1,0 +1,387 @@
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("./fonts/AtkinsonHyperlegibleNext-VariableFont_wght.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Material 3 tonal palette from the Flutter client's seed, #3E7FA9. */
+:root {
+  color-scheme: light;
+  --primary: #2c6a93;
+  --on-primary: #ffffff;
+  --primary-container: #cde5ff;
+  --on-primary-container: #001d32;
+  --secondary-container: #d4e4f6;
+  --on-secondary-container: #0d1d2a;
+  --surface: #f7f9fd;
+  --surface-bright: #ffffff;
+  --surface-container-low: #f1f4f9;
+  --surface-container: #ebeef3;
+  --surface-container-high: #e5e8ed;
+  --surface-container-highest: #dfe3e8;
+  --on-surface: #181c20;
+  --on-surface-variant: #41474d;
+  --outline: #71787e;
+  --outline-variant: #c1c7ce;
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #410002;
+  --scrim: rgb(0 0 0 / 0.32);
+  --tile: #ffffff;
+  --tile-ring: rgb(0 0 0 / 0.08);
+  /* Raised surfaces that group content: the list, settings sections. */
+  --panel: var(--surface-bright);
+  --hairline: color-mix(in srgb, var(--outline-variant) 55%, transparent);
+  --mark: #ffe08a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 2px 8px rgb(0 0 0 / 0.08);
+  --shadow-high: 0 4px 12px rgb(0 0 0 / 0.14), 0 12px 32px rgb(0 0 0 / 0.12);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --column: 760px;
+  --font: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --primary: #99cbf6;
+    --on-primary: #003350;
+    --primary-container: #004b71;
+    --on-primary-container: #cde5ff;
+    --secondary-container: #394857;
+    --on-secondary-container: #d4e4f6;
+    --surface: #101418;
+    --surface-bright: #36393e;
+    --surface-container-low: #181c20;
+    --surface-container: #1c2024;
+    --surface-container-high: #262a2f;
+    --surface-container-highest: #31353a;
+    --on-surface: #e0e2e8;
+    --on-surface-variant: #c1c7ce;
+    --outline: #8b9198;
+    --outline-variant: #41474d;
+    --error: #ffb4ab;
+    --on-error: #690005;
+    --error-container: #93000a;
+    --on-error-container: #ffdad6;
+    --scrim: rgb(0 0 0 / 0.56);
+    --tile: #e3e6ea;
+    --tile-ring: transparent;
+    --panel: var(--surface-container-low);
+    --mark: #6b5400;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #99cbf6;
+  --on-primary: #003350;
+  --primary-container: #004b71;
+  --on-primary-container: #cde5ff;
+  --secondary-container: #394857;
+  --on-secondary-container: #d4e4f6;
+  --surface: #101418;
+  --surface-bright: #36393e;
+  --surface-container-low: #181c20;
+  --surface-container: #1c2024;
+  --surface-container-high: #262a2f;
+  --surface-container-highest: #31353a;
+  --on-surface: #e0e2e8;
+  --on-surface-variant: #c1c7ce;
+  --outline: #8b9198;
+  --outline-variant: #41474d;
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+  --scrim: rgb(0 0 0 / 0.56);
+  --tile: #e3e6ea;
+  --tile-ring: transparent;
+  --panel: var(--surface-container-low);
+  --mark: #6b5400;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--surface);
+  color: var(--on-surface);
+  font: 15px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--surface);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+svg {
+  flex-shrink: 0;
+}
+
+.panel {
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* The app bar: a tinted band, set apart from the page by a hairline. */
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--surface-container);
+  box-shadow: 0 1px 0 var(--hairline);
+  transition:
+    background-color 160ms,
+    box-shadow 160ms;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color 120ms,
+    box-shadow 120ms,
+    opacity 120ms;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.filled {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.btn.filled:not(:disabled):hover {
+  box-shadow: var(--shadow);
+  background: color-mix(in srgb, var(--primary), var(--on-primary) 8%);
+}
+
+.btn.tonal {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.btn.tonal:not(:disabled):hover {
+  background: color-mix(in srgb, var(--secondary-container), var(--on-secondary-container) 8%);
+}
+
+.btn.text {
+  background: transparent;
+  color: var(--primary);
+  padding: 0 12px;
+}
+
+.btn.text:not(:disabled):hover {
+  background: color-mix(in srgb, transparent, var(--primary) 8%);
+}
+
+.btn.danger {
+  background: var(--error);
+  color: var(--on-error);
+}
+
+.btn.danger:not(:disabled):hover {
+  box-shadow: var(--shadow);
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+
+.icon-btn:not(:disabled):hover {
+  background: color-mix(in srgb, transparent, var(--on-surface) 8%);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-btn.small {
+  width: 32px;
+  height: 32px;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 0.87rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+
+.chip:hover {
+  background: color-mix(in srgb, transparent, var(--on-surface) 8%);
+}
+
+.chip[aria-pressed="true"],
+.chip.on {
+  border-color: transparent;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.chip.some {
+  border-style: dashed;
+  border-color: var(--outline);
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field > span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  outline: none;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
+}
+
+.input:focus {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--on-surface-variant);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: 1px solid var(--outline-variant);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface-container-low);
+  font: 600 0.78rem/1.4 var(--font);
+  text-align: center;
+}
+
+/* ── Menus ───────────────────────────────────────────────────────────────── */
+
+.menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 6px 0;
+  min-width: 200px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-high);
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  background: color-mix(in srgb, transparent, var(--on-surface) 8%);
+  outline: none;
+}

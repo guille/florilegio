@@ -25,6 +25,12 @@ run = "wrangler deploy --minify"
 [tasks.typecheck]
 run = "tsc --noEmit"
 
+[tasks.types]
+sources     = ["src/**/*.ts", "worker-configuration.d.ts", "tsconfig.json"]
+outputs     = [".types/**/*.d.ts"]
+run         = "tsc --declaration --emitDeclarationOnly --noEmit false --outDir .types"
+description = "Emit the API's declarations for web/'s typed client"
+
 [tasks.check]
 depends = ["typecheck", "lint", "test"]
 
@@ -39,3 +45,6 @@ run = "oxlint"
 
 [tasks.fmt]
 run = "oxfmt"
+
+[deps.pnpm]
+auto = true

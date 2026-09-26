@@ -5,7 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:florilegio/data/api_client.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 import 'package:florilegio/services/settings_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:material_ui/material_ui.dart';
 
 class SettingsView extends StatefulWidget {
@@ -106,7 +105,7 @@ class _SettingsViewState extends State<SettingsView> {
         fileName: 'florilegio-export.json',
         bytes: bytes,
       );
-      _showSnack(kIsWeb || uri != null ? 'Exported successfully' : 'Export cancelled');
+      _showSnack(uri != null ? 'Exported successfully' : 'Export cancelled');
     } on ApiException catch (e) {
       _showSnack('Export failed: ${e.userMessage}');
     } catch (e) {

@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
+import type { MiddlewareHandler } from "hono";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,12 @@ type Bookmark = {
   created_at: string;
   updated_at: string;
 };
+
+/** What clients may send to create or update a bookmark. */
+type BookmarkInput = { url: string; title?: string | null; tags?: string | string[] | null };
+
+/** A validated, normalized BookmarkInput. */
+type BookmarkFields = Pick<Bookmark, "url" | "title" | "tags">;
 
 // ── App ────────────────────────────────────────────────────────────────────────
 
@@ -53,243 +60,231 @@ app.use("*", async (c, next) => {
 //   No server-side filtering: clients sync the full collection and filter
 //   locally. Unknown query params are ignored.
 
-app.get("/bookmarks", async (c) => {
-  const { limit: rawLimit, offset: rawOffset } = c.req.query();
-  const limit = clampInt(rawLimit, 200, 1, 500);
-  const offset = clampInt(rawOffset, 0, 0, Infinity);
+const routes = app
+  .get("/bookmarks", async (c) => {
+    const { limit: rawLimit, offset: rawOffset } = c.req.query();
+    const limit = clampInt(rawLimit, 200, 1, 500);
+    const offset = clampInt(rawOffset, 0, 0, Infinity);
 
-  // ── Conditional GET ──────────────────────────────────────────────────────
-  // The version counter is a valid strong validator for any list URL: for a
-  // fixed URL, an unchanged version means an identical result set in an
-  // identical order.
-  const etag = `"${await getVersion(c.env.DB)}"`;
-  c.header("ETag", etag);
-  // A 304 must still carry the ETag it would have sent with a 200.
-  if (matchesEtag(c.req.header("If-None-Match"), etag)) return c.body(null, 304);
+    // ── Conditional GET ──────────────────────────────────────────────────────
+    // The version counter is a valid strong validator for any list URL: for a
+    // fixed URL, an unchanged version means an identical result set in an
+    // identical order.
+    const etag = `"${await getVersion(c.env.DB)}"`;
+    c.header("ETag", etag);
+    // A 304 must still carry the ETag it would have sent with a 200.
+    if (matchesEtag(c.req.header("If-None-Match"), etag)) return c.body(null, 304);
 
-  // Deterministic ordering: created_at DESC, then id ASC as tiebreaker
-  const [count, page] = await c.env.DB.batch([
-    c.env.DB.prepare("SELECT COUNT(*) as total FROM bookmarks"),
-    c.env.DB.prepare(
-      "SELECT * FROM bookmarks ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?",
-    ).bind(limit, offset),
-  ]);
+    // Deterministic ordering: created_at DESC, then id ASC as tiebreaker
+    const [count, page] = await c.env.DB.batch([
+      c.env.DB.prepare("SELECT COUNT(*) as total FROM bookmarks"),
+      c.env.DB.prepare(
+        "SELECT * FROM bookmarks ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?",
+      ).bind(limit, offset),
+    ]);
 
-  c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
-  return c.json(page.results as Bookmark[]);
-});
+    c.header("X-Total-Count", String((count.results[0] as { total: number })?.total ?? 0));
+    return c.json(page.results as Bookmark[]);
+  })
 
-// ── Export  GET /bookmarks/export ───────────────────────────────────────────────
-//
-//   Returns all bookmarks as a JSON array (no pagination).
+  // ── Export  GET /bookmarks/export ───────────────────────────────────────────────
+  //
+  //   Returns all bookmarks as a JSON array (no pagination).
 
-app.get("/bookmarks/export", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT * FROM bookmarks ORDER BY created_at DESC",
-  ).all<Bookmark>();
+  .get("/bookmarks/export", async (c) => {
+    const { results } = await c.env.DB.prepare(
+      "SELECT * FROM bookmarks ORDER BY created_at DESC",
+    ).all<Bookmark>();
 
-  return c.json(results);
-});
+    return c.json(results);
+  })
 
-// ── Import  POST /bookmarks/import ─────────────────────────────────────────────
-//
-//   Accepts the same JSON array that GET /bookmarks/export produces.
-//   Preserves original ids and timestamps.  Skips rows whose URL already exists.
+  // ── Import  POST /bookmarks/import ─────────────────────────────────────────────
+  //
+  //   Accepts the same JSON array that GET /bookmarks/export produces.
+  //   Preserves original ids and timestamps.  Skips rows whose URL already exists.
 
-app.post("/bookmarks/import", async (c) => {
-  const body = await c.req.json();
+  .post("/bookmarks/import", jsonBody<unknown[], unknown[]>(parseArray), async (c) => {
+    const body = c.req.valid("json");
 
-  if (!Array.isArray(body)) {
-    throw new HTTPException(400, { message: "Body must be a JSON array of bookmarks" });
-  }
-
-  if (body.length === 0) {
-    return c.json({ imported: 0, skipped: 0, errors: [] });
-  }
-
-  // Validate every row up-front before touching the DB.
-  const errors: string[] = [];
-  const rows: Bookmark[] = [];
-
-  for (let i = 0; i < body.length; i++) {
-    const b = body[i];
-    if (!isValidUrl(b?.url)) {
-      errors.push(`[${i}] invalid or missing url`);
-      continue;
+    if (body.length === 0) {
+      return c.json({ imported: 0, skipped: 0, errors: [] });
     }
-    const url = new URL(b.url).href;
-    const title = typeof b.title === "string" ? b.title.slice(0, 2000) : null;
-    const tags = Array.isArray(b.tags)
-      ? b.tags.join(",")
-      : typeof b.tags === "string"
-        ? b.tags
-        : null;
-    const id = typeof b.id === "string" && b.id ? b.id : crypto.randomUUID();
-    const now = new Date().toISOString();
-    const createdAt = toIso(b.created_at) ?? now;
-    const updatedAt = toIso(b.updated_at) ?? now;
 
-    rows.push({ id, url, title, tags, created_at: createdAt, updated_at: updatedAt });
-  }
+    // Validate every row up-front before touching the DB.
+    const errors: string[] = [];
+    const rows: Bookmark[] = [];
 
-  // OR IGNORE skips rows conflicting on url or id — whether against existing
-  // data or duplicates within the payload itself — without failing the batch.
-  // RETURNING tells apart inserted rows from ignored ones (meta.changes can't:
-  // it also counts trigger writes).
-  const stmts = rows.map((row) =>
-    c.env.DB.prepare(
-      `INSERT OR IGNORE INTO bookmarks (id, url, title, tags, created_at, updated_at)
+    // Lenient on purpose, unlike create and update: exports may be old or
+    // foreign, so only the url is required and anything else unusable falls
+    // back to a default.
+    for (let i = 0; i < body.length; i++) {
+      const b = body[i] as Record<string, any> | null;
+      if (!isValidUrl(b?.url)) {
+        errors.push(`[${i}] invalid or missing url`);
+        continue;
+      }
+      const url = new URL(b.url).href;
+      const title = typeof b.title === "string" ? b.title.slice(0, 2000) : null;
+      const tags = Array.isArray(b.tags)
+        ? b.tags.join(",")
+        : typeof b.tags === "string"
+          ? b.tags
+          : null;
+      const id = typeof b.id === "string" && b.id ? b.id : crypto.randomUUID();
+      const now = new Date().toISOString();
+      const createdAt = toIso(b.created_at) ?? now;
+      const updatedAt = toIso(b.updated_at) ?? now;
+
+      rows.push({ id, url, title, tags, created_at: createdAt, updated_at: updatedAt });
+    }
+
+    // OR IGNORE skips rows conflicting on url or id — whether against existing
+    // data or duplicates within the payload itself — without failing the batch.
+    // RETURNING tells apart inserted rows from ignored ones (meta.changes can't:
+    // it also counts trigger writes).
+    const stmts = rows.map((row) =>
+      c.env.DB.prepare(
+        `INSERT OR IGNORE INTO bookmarks (id, url, title, tags, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-    ).bind(row.id, row.url, row.title, row.tags, row.created_at, row.updated_at),
-  );
+      ).bind(row.id, row.url, row.title, row.tags, row.created_at, row.updated_at),
+    );
 
-  let imported = 0;
+    let imported = 0;
 
-  if (stmts.length) {
-    const results = await c.env.DB.batch<{ id: string }>(stmts);
-    imported = results.filter((r) => r.results.length > 0).length;
-  }
+    if (stmts.length) {
+      const results = await c.env.DB.batch<{ id: string }>(stmts);
+      imported = results.filter((r) => r.results.length > 0).length;
+    }
 
-  return c.json({ imported, skipped: rows.length - imported, errors });
-});
+    return c.json({ imported, skipped: rows.length - imported, errors });
+  })
 
-// ── Get one  GET /bookmarks/:id ────────────────────────────────────────────────
+  // ── Get one  GET /bookmarks/:id ────────────────────────────────────────────────
 
-app.get("/bookmarks/:id", async (c) => {
-  const bookmark = await findOrThrow(c.env.DB, c.req.param("id"));
-  return c.json(bookmark);
-});
+  .get("/bookmarks/:id", async (c) => {
+    const bookmark = await findOrThrow(c.env.DB, c.req.param("id"));
+    return c.json(bookmark);
+  })
 
-// ── Create  POST /bookmarks ────────────────────────────────────────────────────
-//
-//   Body (JSON):
-//     url*         string
-//     title        string
-//     tags         string   "tag1,tag2"  or pass an array → joined for you
+  // ── Create  POST /bookmarks ────────────────────────────────────────────────────
+  //
+  //   Body (JSON):
+  //     url*         string
+  //     title        string
+  //     tags         string   "tag1,tag2"  or pass an array → joined for you
 
-app.post("/bookmarks", async (c) => {
-  const body = await c.req.json<Partial<Bookmark> & { tags?: string | string[] }>();
+  .post("/bookmarks", jsonBody<BookmarkInput, BookmarkFields>(parseNewBookmark), async (c) => {
+    const { url, title, tags } = c.req.valid("json");
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  if (!isValidUrl(body.url))
-    throw new HTTPException(400, { message: "A valid http(s) url is required" });
-
-  const url = new URL(body.url).href; // normalize
-  const title = typeof body.title === "string" ? body.title.slice(0, 2000) : null;
-  const tags = Array.isArray(body.tags)
-    ? body.tags.join(",")
-    : typeof body.tags === "string"
-      ? body.tags
-      : null;
-
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  // Atomic duplicate check via ON CONFLICT — avoids TOCTOU race.
-  // RETURNING yields the created row, or nothing on conflict.
-  const created = await c.env.DB.prepare(
-    `INSERT INTO bookmarks (id, url, title, tags, created_at, updated_at)
+    // Atomic duplicate check via ON CONFLICT — avoids TOCTOU race.
+    // RETURNING yields the created row, or nothing on conflict.
+    const created = await c.env.DB.prepare(
+      `INSERT INTO bookmarks (id, url, title, tags, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(url) DO NOTHING
        RETURNING *`,
+    )
+      .bind(id, url, title, tags, now, now)
+      .first<Bookmark>();
+
+    if (!created) {
+      const existing = await c.env.DB.prepare("SELECT id FROM bookmarks WHERE url = ?")
+        .bind(url)
+        .first<{ id: string }>();
+      return c.json({ error: "Bookmark already exists", existing_id: existing?.id }, 409);
+    }
+
+    return c.json(created, 201);
+  })
+
+  // ── Update  PATCH /bookmarks/:id ───────────────────────────────────────────────
+  //
+  //   Send only the fields you want to change.
+  //   Accepted: title, tags
+
+  .patch(
+    "/bookmarks/:id",
+    jsonBody<Omit<BookmarkInput, "url">, Partial<Omit<BookmarkFields, "url">>>(parseBookmarkPatch),
+    async (c) => {
+      const body = c.req.valid("json");
+
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if (body.title !== undefined) {
+        fields.push("title = ?");
+        values.push(body.title);
+      }
+      if (body.tags !== undefined) {
+        fields.push("tags = ?");
+        values.push(body.tags);
+      }
+
+      if (!fields.length) throw new HTTPException(400, { message: "No updatable fields provided" });
+
+      fields.push("updated_at = ?");
+      values.push(new Date().toISOString(), c.req.param("id"));
+
+      // Single statement: existence check, update, and read-back are atomic
+      const updated = await c.env.DB.prepare(
+        `UPDATE bookmarks SET ${fields.join(", ")} WHERE id = ? RETURNING *`,
+      )
+        .bind(...values)
+        .first<Bookmark>();
+
+      if (!updated) throw new HTTPException(404, { message: "Bookmark not found" });
+
+      return c.json(updated);
+    },
   )
-    .bind(id, url, title, tags, now, now)
-    .first<Bookmark>();
 
-  if (!created) {
-    const existing = await c.env.DB.prepare("SELECT id FROM bookmarks WHERE url = ?")
-      .bind(url)
-      .first<{ id: string }>();
-    return c.json({ error: "Bookmark already exists", existing_id: existing?.id }, 409);
-  }
+  // ── Delete  DELETE /bookmarks/:id ──────────────────────────────────────────────
 
-  return c.json(created, 201);
-});
+  .delete("/bookmarks/:id", async (c) => {
+    const { meta } = await c.env.DB.prepare("DELETE FROM bookmarks WHERE id = ?")
+      .bind(c.req.param("id"))
+      .run();
 
-// ── Update  PATCH /bookmarks/:id ───────────────────────────────────────────────
-//
-//   Send only the fields you want to change.
-//   Accepted: title, tags
+    if (!meta.changes) throw new HTTPException(404, { message: "Bookmark not found" });
 
-app.patch("/bookmarks/:id", async (c) => {
-  const body = await c.req.json<Partial<Bookmark> & { tags?: string | string[] }>();
+    return c.body(null, 204);
+  })
 
-  const fields: string[] = [];
-  const values: unknown[] = [];
+  // ── Favicon  GET /favicon/:host ────────────────────────────────────────────────
+  //
+  //   Proxies Google's favicon service: it sends no CORS headers, so browser
+  //   clients can't fetch it directly. Bearer auth (like every other route)
+  //   keeps this from being an open favicon proxy.
+  //
+  //   Google over DuckDuckGo because it always serves a PNG at the requested
+  //   size, whereas DDG passes ICO files through unconverted.
 
-  if ("title" in body) {
-    const title = typeof body.title === "string" ? body.title.slice(0, 2000) : null;
-    fields.push("title = ?");
-    values.push(title);
-  }
-  if ("tags" in body) {
-    const tags = Array.isArray(body.tags) ? body.tags.join(",") : (body.tags ?? null);
-    fields.push("tags = ?");
-    values.push(tags);
-  }
+  .get("/favicon/:host", async (c) => {
+    const host = c.req.param("host").toLowerCase();
+    if (host.length > 253 || !HOSTNAME_RE.test(host)) {
+      throw new HTTPException(400, { message: "Invalid host" });
+    }
 
-  if (!fields.length) throw new HTTPException(400, { message: "No updatable fields provided" });
+    const upstream = await fetch(
+      `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${host}&size=64`,
+      { cf: { cacheEverything: true, cacheTtl: 604800 } },
+    );
+    if (!upstream.ok || !upstream.body) {
+      // Unconsumed bodies pin the connection until GC
+      await upstream.body?.cancel();
+      throw new HTTPException(404, { message: "No favicon" });
+    }
 
-  fields.push("updated_at = ?");
-  values.push(new Date().toISOString(), c.req.param("id"));
-
-  // Single statement: existence check, update, and read-back are atomic
-  const updated = await c.env.DB.prepare(
-    `UPDATE bookmarks SET ${fields.join(", ")} WHERE id = ? RETURNING *`,
-  )
-    .bind(...values)
-    .first<Bookmark>();
-
-  if (!updated) throw new HTTPException(404, { message: "Bookmark not found" });
-
-  return c.json(updated);
-});
-
-// ── Delete  DELETE /bookmarks/:id ──────────────────────────────────────────────
-
-app.delete("/bookmarks/:id", async (c) => {
-  const { meta } = await c.env.DB.prepare("DELETE FROM bookmarks WHERE id = ?")
-    .bind(c.req.param("id"))
-    .run();
-
-  if (!meta.changes) throw new HTTPException(404, { message: "Bookmark not found" });
-
-  return c.body(null, 204);
-});
-
-// ── Favicon  GET /favicon/:host ────────────────────────────────────────────────
-//
-//   Proxies Google's favicon service: it sends no CORS headers, so browser
-//   clients can't fetch it directly. Bearer auth (like every other route)
-//   keeps this from being an open favicon proxy.
-//
-//   Google over DuckDuckGo because it always serves PNG: Flutter web's decoder
-//   can't handle the ICO files DDG passes through unconverted.
-
-const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
-
-app.get("/favicon/:host", async (c) => {
-  const host = c.req.param("host").toLowerCase();
-  if (host.length > 253 || !HOSTNAME_RE.test(host)) {
-    throw new HTTPException(400, { message: "Invalid host" });
-  }
-
-  const upstream = await fetch(
-    `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${host}&size=64`,
-    { cf: { cacheEverything: true, cacheTtl: 604800 } },
-  );
-  if (!upstream.ok || !upstream.body) {
-    // Unconsumed bodies pin the connection until GC
-    await upstream.body?.cancel();
-    throw new HTTPException(404, { message: "No favicon" });
-  }
-
-  return c.body(upstream.body, 200, {
-    "Content-Type": upstream.headers.get("Content-Type") ?? "image/x-icon",
-    // Icons rarely change and staleness is harmless; let browsers cache hard.
-    // private: the request carries Authorization, keep shared caches out.
-    "Cache-Control": "private, max-age=604800",
+    return c.body(upstream.body, 200, {
+      "Content-Type": upstream.headers.get("Content-Type") ?? "image/x-icon",
+      // Icons rarely change and staleness is harmless; let browsers cache hard.
+      // private: the request carries Authorization, keep shared caches out.
+      "Cache-Control": "private, max-age=604800",
+    });
   });
-});
 
 // ── Error handling ─────────────────────────────────────────────────────────────
 
@@ -309,6 +304,71 @@ app.onError((err, c) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+/** Parses a route's JSON body; `parse` throws to reject it. `In` is what the RPC
+ *  client (hono/client) may send, and handlers read what `parse` returned with
+ *  c.req.valid("json"). */
+function jsonBody<In, Out extends object>(
+  parse: (body: unknown) => Out,
+): MiddlewareHandler<
+  { Bindings: CloudflareBindings },
+  string,
+  { in: { json: In }; out: { json: Out } }
+> {
+  return async (c, next) => {
+    c.req.addValidatedData("json", parse(await c.req.json()));
+    await next();
+  };
+}
+
+function badRequest(message: string): HTTPException {
+  return new HTTPException(400, { message });
+}
+
+function parseArray(body: unknown): unknown[] {
+  if (!Array.isArray(body)) throw badRequest("Body must be a JSON array of bookmarks");
+  return body;
+}
+
+function parseObject(body: unknown): Record<string, unknown> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw badRequest("Body must be a JSON object");
+  }
+  return body as Record<string, unknown>;
+}
+
+function parseNewBookmark(body: unknown): BookmarkFields {
+  const b = parseObject(body);
+  if (!isValidUrl(b.url)) throw badRequest("A valid http(s) url is required");
+  return {
+    url: new URL(b.url).href,
+    title: b.title === undefined ? null : parseTitle(b.title),
+    tags: b.tags === undefined ? null : parseTags(b.tags),
+  };
+}
+
+/** Absent fields stay absent: they're left as they are. */
+function parseBookmarkPatch(body: unknown): Partial<Omit<BookmarkFields, "url">> {
+  const b = parseObject(body);
+  return {
+    ...(b.title !== undefined && { title: parseTitle(b.title) }),
+    ...(b.tags !== undefined && { tags: parseTags(b.tags) }),
+  };
+}
+
+function parseTitle(v: unknown): string | null {
+  if (v === null) return null;
+  if (typeof v !== "string") throw badRequest("title must be a string or null");
+  return v.slice(0, 2000);
+}
+
+function parseTags(v: unknown): string | null {
+  if (v === null || typeof v === "string") return v;
+  if (Array.isArray(v) && v.every((t) => typeof t === "string")) return v.join(",");
+  throw badRequest("tags must be a string, an array of strings, or null");
+}
 
 /** Normalize a caller-supplied timestamp to ISO-8601, or null if unusable.
  *  created_at is sorted lexicographically, so an arbitrary string would order
@@ -359,5 +419,8 @@ function matchesEtag(header: string | undefined, etag: string): boolean {
   if (header.trim() === "*") return true;
   return header.split(",").some((t) => t.trim().replace(/^W\//, "") === etag);
 }
+
+export type AppType = typeof routes;
+export type { Bookmark };
 
 export default app;

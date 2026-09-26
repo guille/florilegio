@@ -1,7 +1,7 @@
 import 'package:florilegio/domain/bookmark.dart';
 import 'package:florilegio/domain/bookmark_repository.dart';
 
-/// In-memory implementation for testing.
+/// In-memory fake for tests.
 class InMemoryBookmarkRepository implements BookmarkRepository {
   final List<Bookmark> _bookmarks = [];
   final List<PendingBookmark> _pending = [];

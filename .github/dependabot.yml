@@ -4,12 +4,15 @@ updates:
   - package-ecosystem: npm
     directories:
       - /worker
-      - /client
+      - /web
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     groups:
+      # web's RPC client is typed against the worker's routes: both must move together.
+      hono:
+        patterns: [hono]
       npm-minor-and-patch:
         update-types: [minor, patch]
 

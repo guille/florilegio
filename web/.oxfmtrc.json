@@ -1,0 +1,4 @@
+{
+  "svelte": true,
+  "ignorePatterns": ["mise.toml"]
+}
