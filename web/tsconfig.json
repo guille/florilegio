@@ -15,5 +15,5 @@
       "$worker": ["../worker/.types/src/index.d.ts"]
     }
   },
-  "include": ["src/**/*", "test/**/*"]
+  "include": ["src/**/*", "test/**/*", "vite.config.ts"]
 }

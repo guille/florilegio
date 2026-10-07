@@ -28,7 +28,7 @@ run = "vite preview"
 
 [tasks.check]
 depends = ["//worker:types"]
-run     = "svelte-check --tsconfig ./tsconfig.json"
+run     = "svelte-check --tsconfig ./tsconfig.json --tsgo --fail-on-warnings"
 
 [tasks.test]
 run = "vitest run"

@@ -70,7 +70,7 @@ jobs:
       - run: pnpm tsc --declaration --emitDeclarationOnly --noEmit false --outDir .types
         working-directory: worker
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm svelte-check --tsconfig ./tsconfig.json
+      - run: pnpm svelte-check --tsconfig ./tsconfig.json --tsgo --fail-on-warnings
       - run: pnpm oxfmt --check
       - run: pnpm oxlint
       - run: pnpm vitest run
