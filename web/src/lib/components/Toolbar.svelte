@@ -11,6 +11,7 @@
     X,
   } from "@lucide/svelte";
   import { tick } from "svelte";
+  import { scrollY } from "svelte/reactivity/window";
   import type { Library } from "../library.svelte";
   import { type ListState, SORT_LABELS, type SortOrder } from "../list.svelte";
   import { menu } from "../menu";
@@ -35,15 +36,16 @@
     onleavesearch: () => void;
   } = $props();
 
-  let search = $state<HTMLInputElement>();
-  let sortMenu = $state<HTMLElement>();
+  let search: HTMLInputElement;
+  let sortMenu: HTMLElement;
+  /** Only rendered outside selection mode. */
   let sortButton = $state<HTMLButtonElement>();
-  let scrolled = $state(false);
   /** On narrow screens search hides behind a button, taking the brand's place when open. */
   let searchOpen = $state(false);
 
   const selecting = $derived(view.selection.length > 0);
   const searching = $derived(searchOpen || view.query !== "");
+  const scrolled = $derived((scrollY.current ?? 0) > 4);
   const syncStatus = $derived(
     [
       "Sync (r)",
@@ -58,7 +60,7 @@
   export async function focusSearch() {
     searchOpen = true;
     await tick();
-    search?.focus();
+    search.focus();
   }
 
   function closeSearch() {
@@ -67,7 +69,7 @@
   }
 
   function placeSortMenu(e: ToggleEvent) {
-    if (e.newState !== "open" || !sortButton || !sortMenu) return;
+    if (e.newState !== "open" || !sortButton) return;
     const r = sortButton.getBoundingClientRect();
     sortMenu.style.top = `${r.bottom + 4}px`;
     sortMenu.style.right = `${document.documentElement.clientWidth - r.right}px`;
@@ -75,11 +77,9 @@
 
   function pickSort(order: SortOrder) {
     view.setSort(order);
-    sortMenu?.hidePopover();
+    sortMenu.hidePopover();
   }
 </script>
-
-<svelte:window onscroll={() => (scrolled = window.scrollY > 4)} />
 
 <header class="app-bar bar" class:selecting class:searching class:scrolled>
   <div class="inner">
@@ -131,7 +131,7 @@
         onkeydown={(e) => {
           if (e.key === "Escape") {
             closeSearch();
-            search?.blur();
+            search.blur();
           } else if (e.key === "ArrowDown" || e.key === "Enter") {
             e.preventDefault();
             onleavesearch();
@@ -144,7 +144,7 @@
           aria-label="Clear search"
           onclick={() => {
             view.query = "";
-            search?.focus();
+            search.focus();
           }}><X size={17} /></button
         >
       {:else}

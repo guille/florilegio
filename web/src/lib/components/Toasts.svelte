@@ -1,16 +1,20 @@
 <script lang="ts">
   import { X } from "@lucide/svelte";
+  import type { Attachment } from "svelte/attachments";
   import { fly } from "svelte/transition";
   import { toasts } from "../toasts.svelte";
 
-  let hovered = false;
-  let focused = false;
-  const hold = () => toasts.hold(hovered || focused);
-  // A replaced toast never sees its pointerleave or focusout.
-  const release = () => () => {
-    hovered = focused = false;
-    hold();
-  };
+  function holdWhileEngaged(id: number): Attachment<HTMLElement> {
+    return (node) => {
+      let hovered = false;
+      let focused = false;
+      const update = () => toasts.hold(id, hovered || focused);
+      node.addEventListener("pointerenter", () => ((hovered = true), update()));
+      node.addEventListener("pointerleave", () => ((hovered = false), update()));
+      node.addEventListener("focusin", () => ((focused = true), update()));
+      node.addEventListener("focusout", () => ((focused = false), update()));
+    };
+  }
 </script>
 
 <div class="toasts" role="status" aria-live="polite">
@@ -20,12 +24,8 @@
       <div
         class="toast"
         role="group"
-        transition:fly={{ y: 16, duration: 160 }}
-        onpointerenter={() => ((hovered = true), hold())}
-        onpointerleave={() => ((hovered = false), hold())}
-        onfocusin={() => ((focused = true), hold())}
-        onfocusout={() => ((focused = false), hold())}
-        {@attach release}
+        transition:fly|global={{ y: 16, duration: 160 }}
+        {@attach holdWhileEngaged(toast.id)}
       >
         <span>{toast.message}</span>
         {#if toast.action}

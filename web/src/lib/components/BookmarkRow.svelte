@@ -57,7 +57,7 @@
 </script>
 
 {#snippet marked(text: string)}
-  {#each highlight(text, query) as part, i (i)}{#if part.hit}<mark>{part.text}</mark
+  {#each highlight(text, query) as part}{#if part.hit}<mark>{part.text}</mark
       >{:else}{part.text}{/if}{/each}
 {/snippet}
 

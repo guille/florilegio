@@ -43,10 +43,8 @@ export class Repository {
   private constructor(kv: KV, cells: Cells) {
     this.#kv = kv;
     this.#cells = cells;
-    kv.watch(async (key) => {
-      if (!(key in cells)) return;
-      const k = key as keyof State;
-      this.#cells[k].value = (await kv.get(k)) ?? EMPTY[k];
+    kv.watch((key) => {
+      if (key in cells) void this.#reload(key as keyof State);
     });
   }
 
@@ -55,6 +53,10 @@ export class Repository {
     const values = await Promise.all(keys.map(async (k) => (await kv.get(k)) ?? EMPTY[k]));
     const cells = Object.fromEntries(keys.map((k, i) => [k, new Cell(values[i])])) as Cells;
     return new Repository(kv, cells);
+  }
+
+  async #reload<K extends keyof State>(key: K): Promise<void> {
+    this.#cells[key].value = (await this.#kv.get<State[K]>(key)) ?? EMPTY[key];
   }
 
   async #update<K extends keyof State>(key: K, fn: (current: State[K]) => State[K]): Promise<void> {

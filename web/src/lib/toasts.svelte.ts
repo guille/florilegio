@@ -19,16 +19,17 @@ class Toasts {
 
   show(message: string, options: ToastOptions = {}) {
     this.#expire();
+    this.#held = false;
     this.current = { id: ++next, message, ...options };
     this.#remaining = options.ms ?? (options.action ? 6000 : 4000);
-    if (!this.#held) this.#start();
+    this.#start();
   }
 
-  /** Stop the clock while the user is looking at or reaching for the toast. */
-  hold(held: boolean) {
-    if (held === this.#held) return;
+  /** Stop the clock while the user is looking at or reaching for toast `id`.
+   *  A toast on its way out can no longer hold its replacement. */
+  hold(id: number, held: boolean) {
+    if (id !== this.current?.id || held === this.#held) return;
     this.#held = held;
-    if (!this.current) return;
     if (held) {
       clearTimeout(this.#timer);
       this.#remaining = Math.max(0, this.#deadline - Date.now());

@@ -30,7 +30,7 @@
   let dragging = $state(false);
   let toolbar: Toolbar;
   let rowMenu: RowMenu;
-  const rows: Record<string, BookmarkRow | null> = $state({});
+  const rows: Record<string, BookmarkRow | null> = {};
   /** The bookmark whose row has focus, which keyboard shortcuts act on. */
   let cursor = $state<string | null>(null);
 
@@ -206,7 +206,7 @@
 
   {#if neverSynced && library.syncing}
     <ul class="list panel skeleton" aria-label="Loading">
-      {#each { length: 6 }, i (i)}<li><span></span><span></span></li>{/each}
+      {#each { length: 6 }}<li><span></span><span></span></li>{/each}
     </ul>
   {:else if view.visible.length === 0}
     {#if view.hasFilters}
