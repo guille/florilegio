@@ -34,10 +34,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
-          version: latest
+          package_json_file: worker/package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          node-version: 26
           cache: pnpm
           cache-dependency-path: worker/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -56,10 +56,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
-          version: latest
+          package_json_file: web/package.json
       - uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          node-version: 26
           cache: pnpm
           cache-dependency-path: |
             web/pnpm-lock.yaml

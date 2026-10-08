@@ -13,7 +13,7 @@ node = "latest"
 [tools.pnpm]
 version     = "latest"
 depends     = "node"
-postinstall = { run = "mise run //:setup:node", when = "always" }
+postinstall = { run = "for d in web worker; do pnpm -C $d self-update $MISE_TOOL_VERSION && pnpm -C $d install --lockfile-only || exit 1; done && mise run //:setup:node", when = "always" }
 
 [tools.flutter]
 version          = "3.47"

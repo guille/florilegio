@@ -1,4 +1,9 @@
 allowBuilds:
   esbuild: false
   workerd: false
+blockExoticSubdeps: true
+# Enforces package.json's `engines.node`.
+engineStrict: true
 minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 525600
