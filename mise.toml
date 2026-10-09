@@ -33,8 +33,9 @@ postinstall = { run = "mise run //:setup:android", when = "always" }
 android = "android --no-metrics"
 
 [tasks."setup:android"]
-hide = true
-run  = ["android", "android sdk install build-tools/37.0.0", "android sdk install platform-tools", "android sdk install cmdline-tools", "flutter doctor --android-licenses"]
+hide        = true
+interactive = true
+run         = ["android", "android sdk install build-tools/37.0.0", "android sdk install platform-tools", "android sdk install cmdline-tools", "flutter doctor --android-licenses"]
 
 [tasks."setup:flutter"]
 hide = true
