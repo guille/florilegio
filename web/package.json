@@ -3,20 +3,20 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@lucide/svelte": "^1.61.0",
+    "@lucide/svelte": "^1.63.0",
     "hono": "^4.13.14"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "oxfmt": "^0.74.0",
-    "oxlint": "^1.89.0",
-    "svelte": "^5.57.2",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "svelte": "^5.57.3",
     "svelte-check": "^4.7.7",
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
-    "wrangler": "^4.151.3"
+    "wrangler": "^4.154.0"
   },
   "engines": {
     "node": ">=24"
