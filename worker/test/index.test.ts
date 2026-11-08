@@ -54,6 +54,7 @@ describe("Florilegio API", () => {
       "005_version_counter.sql",
       "006_created_at_id_index.sql",
       "007_drop_fts.sql",
+      "008_null_blank_titles.sql",
     ]);
   });
 
@@ -130,6 +131,39 @@ describe("Florilegio API", () => {
     await createBookmark({ url: "https://example.com" });
     const res = await createBookmark({ url: "https://example.com" });
     expect(res.status).toBe(409);
+  });
+
+  it("fills in the title of an untitled duplicate", async () => {
+    const original = await (
+      await createBookmark({ url: "https://example.com", tags: "a" })
+    ).json<any>();
+    const res = await createBookmark({ url: "https://example.com", title: "Example", tags: "b" });
+    expect(res.status).toBe(200);
+    const body = await res.json<any>();
+    expect(body.id).toBe(original.id);
+    expect(body.title).toBe("Example");
+    expect(body.tags).toBe("a");
+    expect(body.created_at).toBe(original.created_at);
+  });
+
+  it("keeps an existing title on a titled duplicate", async () => {
+    await createBookmark({ url: "https://example.com", title: "Mine" });
+    const res = await createBookmark({ url: "https://example.com", title: "Theirs" });
+    expect(res.status).toBe(409);
+    const list = await (
+      await exports.default.fetch("http://localhost/bookmarks", { headers: auth })
+    ).json<any[]>();
+    expect(list[0].title).toBe("Mine");
+  });
+
+  it("stores blank titles as null", async () => {
+    const res = await createBookmark({ url: "https://example.com", title: "  " });
+    const bk = await res.json<any>();
+    expect(bk.title).toBeNull();
+    expect((await (await patchBookmark(bk.id, { title: "" })).json<any>()).title).toBeNull();
+    expect((await createBookmark({ url: "https://example.com", title: "Example" })).status).toBe(
+      200,
+    );
   });
 
   it("returns 400 for invalid URL", async () => {

@@ -125,7 +125,7 @@ const routes = app
         continue;
       }
       const url = new URL(b.url).href;
-      const title = typeof b.title === "string" ? b.title.slice(0, 2000) : null;
+      const title = typeof b.title === "string" ? normalizeTitle(b.title) : null;
       const tags = Array.isArray(b.tags)
         ? b.tags.join(",")
         : typeof b.tags === "string"
@@ -173,31 +173,36 @@ const routes = app
   //     url*         string
   //     title        string
   //     tags         string   "tag1,tag2"  or pass an array → joined for you
+  //
+  //   201 created · 200 duplicate whose missing title was filled in · 409 duplicate
 
   .post("/bookmarks", jsonBody<BookmarkInput, BookmarkFields>(parseNewBookmark), async (c) => {
     const { url, title, tags } = c.req.valid("json");
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Atomic duplicate check via ON CONFLICT — avoids TOCTOU race.
-    // RETURNING yields the created row, or nothing on conflict.
-    const created = await c.env.DB.prepare(
+    // Atomic duplicate check via ON CONFLICT — avoids TOCTOU race. A duplicate
+    // that brings a title for an untitled bookmark fills it in; RETURNING yields
+    // the created or backfilled row, or nothing for any other duplicate.
+    const saved = await c.env.DB.prepare(
       `INSERT INTO bookmarks (id, url, title, tags, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(url) DO NOTHING
+       ON CONFLICT(url) DO UPDATE
+         SET title = excluded.title, updated_at = excluded.updated_at
+         WHERE bookmarks.title IS NULL AND excluded.title IS NOT NULL
        RETURNING *`,
     )
       .bind(id, url, title, tags, now, now)
       .first<Bookmark>();
 
-    if (!created) {
+    if (!saved) {
       const existing = await c.env.DB.prepare("SELECT id FROM bookmarks WHERE url = ?")
         .bind(url)
         .first<{ id: string }>();
       return c.json({ error: "Bookmark already exists", existing_id: existing?.id }, 409);
     }
 
-    return c.json(created, 201);
+    return c.json(saved, saved.id === id ? 201 : 200);
   })
 
   // ── Update  PATCH /bookmarks/:id ───────────────────────────────────────────────
@@ -361,7 +366,12 @@ function parseBookmarkPatch(body: unknown): Partial<Omit<BookmarkFields, "url">>
 function parseTitle(v: unknown): string | null {
   if (v === null) return null;
   if (typeof v !== "string") throw badRequest("title must be a string or null");
-  return v.slice(0, 2000);
+  return normalizeTitle(v);
+}
+
+/** Blank titles are stored as null, so "untitled" has a single representation. */
+function normalizeTitle(v: string): string | null {
+  return v.trim() ? v.slice(0, 2000) : null;
 }
 
 function parseTags(v: unknown): string | null {
