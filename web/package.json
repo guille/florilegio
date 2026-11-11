@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@lucide/svelte": "^1.63.0",
-    "hono": "^4.13.14"
+    "hono": "^4.13.16"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
