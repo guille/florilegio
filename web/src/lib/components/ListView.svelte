@@ -116,7 +116,7 @@
       "#": focused && (() => remove([focused.id])),
       Delete: focused && (() => remove([focused.id])),
       Escape: () => {
-        if (selecting) view.selected.clear();
+        if (selecting) view.clearSelection();
         else if (view.hasFilters) view.clearFilters();
       },
     };
@@ -295,7 +295,7 @@
     library={library.allTags}
     onapply={async (changes) => {
       await library.retag(changes);
-      view.selected.clear();
+      view.clearSelection();
     }}
     onclose={() => (modal = null)}
   />

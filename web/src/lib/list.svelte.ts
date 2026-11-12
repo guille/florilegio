@@ -1,4 +1,3 @@
-import { SvelteSet } from "svelte/reactivity";
 import { type Bookmark, friendlyError } from "./api";
 import type { Library } from "./library.svelte";
 import { toasts } from "./toasts.svelte";
@@ -41,7 +40,8 @@ export class ListState {
   sort = $state<SortOrder>("newest");
   /** Shuffle order, drawn afresh each time Random is picked. */
   #ranks = $state.raw(new Map<string, number>());
-  selected = new SvelteSet<string>();
+  /** Replaced, never mutated: a SvelteSet wakes every row on each add. */
+  selected = $state.raw<ReadonlySet<string>>(new Set());
   /** Bookmark to scroll to and flash, e.g. the one a duplicate save hit. */
   highlight = $state<string | null>(null);
 
@@ -127,26 +127,28 @@ export class ListState {
   toggle(id: string, range = false) {
     const ids = this.visible.map((b) => b.id);
     const [from, to] = [ids.indexOf(this.#anchor ?? ""), ids.indexOf(id)];
-    if (range && from !== -1) {
-      const on = !this.selected.has(id);
-      for (const i of ids.slice(Math.min(from, to), Math.max(from, to) + 1)) {
-        if (on) this.selected.add(i);
-        else this.selected.delete(i);
-      }
-    } else if (this.selected.has(id)) {
-      this.selected.delete(id);
-    } else {
-      this.selected.add(id);
+    const span =
+      range && from !== -1 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id];
+    const next = new Set(this.selected);
+    const on = !next.has(id);
+    for (const i of span) {
+      if (on) next.add(i);
+      else next.delete(i);
     }
+    this.selected = next;
     this.#anchor = id;
   }
 
   selectAll() {
-    for (const b of this.visible) this.selected.add(b.id);
+    this.selected = new Set([...this.selected, ...this.visible.map((b) => b.id)]);
+  }
+
+  clearSelection() {
+    this.selected = new Set();
   }
 
   remove(ids: string[], onundo?: () => void) {
-    for (const id of ids) this.selected.delete(id);
+    this.selected = this.selected.difference(new Set(ids));
     this.#library.remove(ids, onundo);
   }
 

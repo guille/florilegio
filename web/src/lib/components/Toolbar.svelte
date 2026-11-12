@@ -88,7 +88,7 @@
         class="icon-btn"
         aria-label="Clear selection (Esc)"
         title="Clear selection (Esc)"
-        onclick={() => view.selected.clear()}
+        onclick={() => view.clearSelection()}
       >
         <X size={20} />
       </button>
