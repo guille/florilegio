@@ -1,3 +1,9 @@
+<script module lang="ts">
+  import { MediaQuery } from "svelte/reactivity";
+
+  const canHover = new MediaQuery("hover: hover");
+</script>
+
 <script lang="ts">
   import { Check, Copy, EllipsisVertical, Pencil, Trash2 } from "@lucide/svelte";
   import type { Bookmark } from "../api";
@@ -43,6 +49,10 @@
   const hiddenTags = $derived(bookmark.tags.slice(MAX_TAGS));
   const label = $derived(bookmark.title || bookmark.url);
   let link: HTMLAnchorElement;
+  let hovered = $state(false);
+  let focused = $state(false);
+  // Most rows are never hovered; their action icons needn't exist.
+  const showActions = $derived(canHover.current && (hovered || focused) && !selecting);
 
   export function focus() {
     link.focus();
@@ -66,8 +76,17 @@
   class:selected
   class:selecting
   class:highlighted
-  onfocusin={() => onfocus(true)}
-  onfocusout={() => onfocus(false)}
+  onfocusin={() => {
+    focused = true;
+    onfocus(true);
+  }}
+  onfocusout={(e) => {
+    // Moving within the row must keep the actions, or Tab into them lands on <body>.
+    focused = e.currentTarget.contains(e.relatedTarget as Node | null);
+    onfocus(false);
+  }}
+  onpointerenter={() => (hovered = true)}
+  onpointerleave={() => (hovered = false)}
   {@attach (row) => {
     if (highlighted) row.scrollIntoView({ block: "center", behavior: "smooth" });
   }}
@@ -121,25 +140,29 @@
     </div>
   </div>
 
-  <div class="actions">
-    <button class="icon-btn small" title="Edit (e)" aria-label="Edit" onclick={onedit}
-      ><Pencil size={16} /></button
+  {#if showActions}
+    <div class="actions">
+      <button class="icon-btn small" title="Edit (e)" aria-label="Edit" onclick={onedit}
+        ><Pencil size={16} /></button
+      >
+      <button class="icon-btn small" title="Copy URL (c)" aria-label="Copy URL" onclick={oncopy}
+        ><Copy size={16} /></button
+      >
+      <button class="icon-btn small" title="Delete (#)" aria-label="Delete" onclick={ondelete}
+        ><Trash2 size={16} /></button
+      >
+    </div>
+  {:else if !canHover.current}
+    <!-- Touch: nothing to hover, so one menu button stands in for the toolbar. -->
+    <button
+      class="icon-btn small more"
+      aria-label="More actions"
+      aria-haspopup="menu"
+      onclick={(e) => onmenu(e.currentTarget)}
     >
-    <button class="icon-btn small" title="Copy URL (c)" aria-label="Copy URL" onclick={oncopy}
-      ><Copy size={16} /></button
-    >
-    <button class="icon-btn small" title="Delete (#)" aria-label="Delete" onclick={ondelete}
-      ><Trash2 size={16} /></button
-    >
-  </div>
-  <button
-    class="icon-btn small more"
-    aria-label="More actions"
-    aria-haspopup="menu"
-    onclick={(e) => onmenu(e.currentTarget)}
-  >
-    <EllipsisVertical size={18} />
-  </button>
+      <EllipsisVertical size={18} />
+    </button>
+  {/if}
 </li>
 
 <style>
@@ -356,46 +379,31 @@
     border-radius: 12px;
     background: var(--surface-bright);
     box-shadow: var(--shadow);
-    opacity: 0;
-    transform: translate(4px, -50%);
+    transform: translateY(-50%);
     transition:
       opacity 100ms,
       transform 100ms;
-    pointer-events: none;
-  }
 
-  .row:hover .actions,
-  .row:focus-within .actions {
-    opacity: 1;
-    transform: translateY(-50%);
-    pointer-events: auto;
+    @starting-style {
+      opacity: 0;
+      transform: translate(4px, -50%);
+    }
   }
 
   .actions .icon-btn {
     border-radius: 9px;
   }
 
-  .selecting .actions,
   .selecting .more {
     visibility: hidden;
   }
 
   .more {
-    display: none;
     position: relative;
     z-index: 1;
   }
 
-  /* Touch: nothing to hover, so one menu button stands in for the toolbar. */
   @media (hover: none) {
-    .actions {
-      display: none;
-    }
-
-    .more {
-      display: inline-grid;
-    }
-
     .row {
       padding-right: 4px;
       /* A long-press selects the row, not its text; the row shows its own state. */
