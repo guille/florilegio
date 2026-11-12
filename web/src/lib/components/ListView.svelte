@@ -176,7 +176,11 @@
   onbulktags={bulkTags}
   onstats={() => (modal = { kind: "stats" })}
   ondeleteselection={removeSelection}
-  onleavesearch={() => focusRow(view.visible[0]?.id)}
+  onleavesearch={async () => {
+    view.applySearch();
+    await tick();
+    focusRow(view.visible[0]?.id);
+  }}
 />
 
 <RowMenu
@@ -231,7 +235,7 @@
       <p class="summary">
         <span>
           {plural(view.visible.length, "bookmark")}
-          {#if view.query.trim()}matching “{view.query.trim()}”{/if}
+          {#if view.search.trim()}matching “{view.search.trim()}”{/if}
           {#if view.tag}tagged <strong>{view.tag}</strong>{/if}
         </span>
         <button class="btn text" onclick={() => view.clearFilters()}>Clear</button>
@@ -242,7 +246,7 @@
         <BookmarkRow
           bind:this={rows[bookmark.id]}
           {bookmark}
-          query={view.query}
+          query={view.search}
           selected={view.selected.has(bookmark.id)}
           {selecting}
           highlighted={view.highlight === bookmark.id}

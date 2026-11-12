@@ -14,6 +14,8 @@ export const SORT_LABELS: Record<SortOrder, string> = {
 };
 
 const REVEAL_MS = 1600;
+/** Typing pauses this long before the list is filtered. */
+const SEARCH_DEBOUNCE_MS = 120;
 
 function matches(b: Bookmark, q: string): boolean {
   return (
@@ -28,10 +30,13 @@ function matches(b: Bookmark, q: string): boolean {
 export class ListState {
   #library: Library;
   #revealTimer: ReturnType<typeof setTimeout> | undefined;
+  #searchTimer: ReturnType<typeof setTimeout> | undefined;
   /** Anchor for shift-click range selection. */
   #anchor: string | null = null;
 
-  query = $state("");
+  #query = $state("");
+  /** What the list is filtered and highlighted by: `query`, once typing pauses. */
+  search = $state("");
   tag = $state<string | null>(null);
   sort = $state<SortOrder>("newest");
   /** Shuffle order, drawn afresh each time Random is picked. */
@@ -40,7 +45,7 @@ export class ListState {
   /** Bookmark to scroll to and flash, e.g. the one a duplicate save hit. */
   highlight = $state<string | null>(null);
 
-  #q = $derived(this.query.trim().toLowerCase());
+  #q = $derived(this.search.trim().toLowerCase());
 
   visible = $derived.by(() => {
     const q = this.#q;
@@ -77,6 +82,23 @@ export class ListState {
 
   constructor(library: Library) {
     this.#library = library;
+  }
+
+  /** What's typed in the search box. Clearing it applies at once. */
+  get query() {
+    return this.#query;
+  }
+
+  set query(value: string) {
+    this.#query = value;
+    clearTimeout(this.#searchTimer);
+    if (value.trim()) this.#searchTimer = setTimeout(() => this.applySearch(), SEARCH_DEBOUNCE_MS);
+    else this.applySearch();
+  }
+
+  applySearch() {
+    clearTimeout(this.#searchTimer);
+    this.search = this.#query;
   }
 
   setSort(order: SortOrder) {
