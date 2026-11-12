@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { BookmarkPlus, CloudOff, Plus, SearchX } from "@lucide/svelte";
+  import BookmarkPlus from "@lucide/svelte/icons/bookmark-plus";
+  import CloudOff from "@lucide/svelte/icons/cloud-off";
+  import Plus from "@lucide/svelte/icons/plus";
+  import SearchX from "@lucide/svelte/icons/search-x";
   import { tick } from "svelte";
   import type { Bookmark } from "../api";
   import type { Library } from "../library.svelte";

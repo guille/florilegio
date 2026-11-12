@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { CircleCheck, Copy, Pencil, Trash2 } from "@lucide/svelte";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Bookmark } from "../api";
   import { menu } from "../menu";
 

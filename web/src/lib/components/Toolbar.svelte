@@ -1,15 +1,13 @@
 <script lang="ts">
-  import {
-    ArrowDownUp,
-    Check,
-    Plus,
-    RefreshCw,
-    Search,
-    Settings,
-    Tags,
-    Trash2,
-    X,
-  } from "@lucide/svelte";
+  import ArrowDownUp from "@lucide/svelte/icons/arrow-down-up";
+  import Check from "@lucide/svelte/icons/check";
+  import Plus from "@lucide/svelte/icons/plus";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import Search from "@lucide/svelte/icons/search";
+  import Settings from "@lucide/svelte/icons/settings";
+  import Tags from "@lucide/svelte/icons/tags";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
   import { tick } from "svelte";
   import { scrollY } from "svelte/reactivity/window";
   import type { Library } from "../library.svelte";

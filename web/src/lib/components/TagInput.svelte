@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Plus, X } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import X from "@lucide/svelte/icons/x";
   import { normalizeTag } from "../bulk-tags.svelte";
 
   let { tags = $bindable(), library }: { tags: string[]; library: readonly string[] } = $props();

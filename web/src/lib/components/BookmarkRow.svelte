@@ -5,7 +5,11 @@
 </script>
 
 <script lang="ts">
-  import { Check, Copy, EllipsisVertical, Pencil, Trash2 } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Copy from "@lucide/svelte/icons/copy";
+  import EllipsisVertical from "@lucide/svelte/icons/ellipsis-vertical";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Bookmark } from "../api";
   import { now } from "../clock";
   import { longpress } from "../gestures";

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Check, Minus, Plus } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Minus from "@lucide/svelte/icons/minus";
+  import Plus from "@lucide/svelte/icons/plus";
   import { BulkTagEditor, normalizeTag } from "../bulk-tags.svelte";
   import Dialog from "./Dialog.svelte";
 

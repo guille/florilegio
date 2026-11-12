@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { ArrowLeft, Download, Eye, EyeOff, Monitor, Moon, Sun, Upload } from "@lucide/svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import Download from "@lucide/svelte/icons/download";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
+  import Monitor from "@lucide/svelte/icons/monitor";
+  import Moon from "@lucide/svelte/icons/moon";
+  import Sun from "@lucide/svelte/icons/sun";
+  import Upload from "@lucide/svelte/icons/upload";
   import { createApi, friendlyError, type ImportResult, normalizeBaseUrl } from "../api";
   import type { Library } from "../library.svelte";
   import { settings, type Theme } from "../settings.svelte";

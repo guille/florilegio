@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
   import type { Attachment } from "svelte/attachments";
   import { fly } from "svelte/transition";
   import { toasts } from "../toasts.svelte";
